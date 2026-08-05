@@ -35,18 +35,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const SEARCHES = [
 
 
-    {
+    /*{
         category: 'iphone',
         startUrl: 'https://www.olx.com.br/celulares/estado-pe?q=iphone',
         maxPages: 25,
-    },
+    },*/
 
 
-    /*{
+    {
         category: 'videogame_console',
         startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps5',
         maxPages: 20,
-    },*/
+    },
     // adicionar mais buscas aqui conforme necessário (ex: ps4, xbox, etc)
 ];
 
