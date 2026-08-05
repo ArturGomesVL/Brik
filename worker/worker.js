@@ -38,7 +38,7 @@ const SEARCHES = [
     {
         category: 'iphone',
         startUrl: 'https://www.olx.com.br/celulares/estado-pe?q=iphone',
-        maxPages: 20,
+        maxPages: 25,
     },
 
 
@@ -53,7 +53,7 @@ const SEARCHES = [
 // ------------------------------------------------------------------
 // Passo 1 — Disparar o Actor da Apify e pegar os itens do dataset
 // ------------------------------------------------------------------
-async function runApifyActor(startUrl, maxPages = 20) {
+async function runApifyActor(startUrl, maxPages = 25) {
     // 1. Dispara a run (não espera terminar)
     const startResponse = await fetch(
         `https://api.apify.com/v2/actor-tasks/${APIFY_TASK_ID}/runs?token=${APIFY_TOKEN}`,
@@ -197,15 +197,15 @@ Exemplos corretos: "ps5-slim", "ps5-slim-1tb", "ps4-pro-1tb", "ps3-slim".
 Exemplos INCORRETOS (não faça): "ps5-digital", "ps5-slim-fisico", "ps5-slim-2-controles".
 Se o armazenamento não for mencionado no título, use só modelo+edição: "ps5-slim".
 
-IMPORTANTE sobre condition: seja conservador. Frases como "com nota fiscal", "com caixa",
-ou "muito novo" NÃO são evidência confiável de que o produto é novo — vendedores de
-produtos usados usam essas frases o tempo todo pra transmitir confiança/conservação, não
-para indicar que nunca foi usado. Só classifique como "novo" quando houver sinal
-inequívoco e específico de que o produto nunca foi usado, como "lacrado", "lacrado de
-fábrica", "na caixa, nunca aberto", "zero km", "sem uso". Na ausência desse sinal forte
-e explícito, prefira "usado" (se houver qualquer menção a uso, desgaste, tempo de posse)
-ou "desconhecido" (se não houver nenhuma pista clara). Errar para "desconhecido" é
-preferível a errar para "novo" sem certeza.
+IMPORTANTE sobre condition: este é um mercado de produtos usados — a ausência de
+sinal claro de "novo" já é, por si só, evidência de que o produto é usado. Frases
+como "com nota fiscal", "com caixa", ou "muito novo" NÃO são evidência confiável de
+que o produto é novo — vendedores de produtos usados usam essas frases o tempo todo
+pra transmitir confiança/conservação, não para indicar que nunca foi usado. Só
+classifique como "novo" quando houver sinal inequívoco e específico de que o produto
+nunca foi usado, como "lacrado", "lacrado de fábrica", "na caixa, nunca aberto",
+"zero km", "sem uso". Em qualquer outro caso, incluindo quando não houver pista
+alguma sobre a condição, classifique como "usado".
 
 
 
@@ -213,7 +213,7 @@ Para CADA título numerado na lista, responda com um objeto JSON contendo:
 - "index": o número do item (mesmo da lista)
 - "categoryMatch": true se o anúncio é realmente o produto principal da categoria (não acessório, peça, capa, jogo avulso, serviço, ou produto diferente que só menciona o termo buscado); false caso contrário
 - "variant": uma string curta e padronizada identificando o modelo/variante específico (ex: "iphone-11-pro-max-256gb", "ps5-slim"), ou null se categoryMatch for false ou não for possível identificar com confiança
-- "condition": "novo", "usado", ou "desconhecido" se não for possível inferir com confiança a partir do título
+- "condition": "novo" ou "usado" (nunca null quando categoryMatch for true)
 
 Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem markdown, sem crases.`;
 
@@ -264,7 +264,7 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
             : (c.variant ?? null);
 
         const condition = categoryMatch === true
-            ? (c.condition || 'desconhecido')
+            ? (c.condition || 'usado')
             : (c.condition ?? null);
 
         return {
