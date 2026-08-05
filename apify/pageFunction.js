@@ -58,6 +58,23 @@ async function pageFunction(context) {
             return isNaN(value) ? null : Math.round(value);
         }
 
+        function normalizeUrl(url) {
+            try {
+                const u = new URL(url);
+                // Extrai o(s) grupo(s) de dígitos do caminho — o ID do anúncio é
+                // sempre o último grupo numérico longo (6+ dígitos) no final da URL,
+                // independente do formato (curto "/vi/{id}" ou longo com slug).
+                const matches = u.pathname.match(/\d{6,}/g);
+                if (matches && matches.length > 0) {
+                    const adId = matches[matches.length - 1];
+                    return `${u.origin}/vi/${adId}`;
+                }
+                return `${u.origin}${u.pathname}`;
+            } catch (e) {
+                return url;
+            }
+        }
+
         function splitLocationAndDate(raw) {
             if (!raw) return { location: null, postedAt: null };
             const parts = raw.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -163,20 +180,22 @@ async function pageFunction(context) {
             const cardRoot = findCardRoot(titleEl);
             const linkEl = cardRoot.tagName === 'A' ? cardRoot : cardRoot.querySelector('a[href*="olx.com.br"]');
             const href = linkEl ? linkEl.href : null;
-            if (!href || found.has(href)) return;
+            if (!href) return;
+            const normalizedUrl = normalizeUrl(href);
+            if (found.has(normalizedUrl)) return;
 
             const locationEl = cardRoot.querySelector('[class*="location"], [data-testid="location-date"]');
             const priceText = findPriceText(cardRoot);
             const rawLocation = locationEl ? locationEl.innerText.trim() : null;
             const { location, postedAt } = splitLocationAndDate(rawLocation);
 
-            found.set(href, {
+            found.set(normalizedUrl, {
                 title: titleEl.innerText.trim(),
                 priceText,
                 price: parsePriceToNumber(priceText),
                 location,
                 postedAtText: postedAt,
-                url: href,
+                url: normalizedUrl,
                 imageUrl: findImageUrl(cardRoot),
             });
         });
@@ -192,7 +211,8 @@ async function pageFunction(context) {
 
         anchors.forEach((a) => {
             const href = a.href;
-            if (found.has(href)) return;
+            const normalizedUrl = normalizeUrl(href);
+            if (found.has(normalizedUrl)) return;
 
             let root = a;
             for (let i = 0; i < 6; i++) {
@@ -210,13 +230,13 @@ async function pageFunction(context) {
             const rawLocation = locationEl ? locationEl.innerText.trim() : null;
             const { location, postedAt } = splitLocationAndDate(rawLocation);
 
-            found.set(href, {
+            found.set(normalizedUrl, {
                 title,
                 priceText,
                 price: parsePriceToNumber(priceText),
                 location,
                 postedAtText: postedAt,
-                url: href,
+                url: normalizedUrl,
                 imageUrl: findImageUrl(root) || findImageUrl(root.parentElement || root),
             });
         });

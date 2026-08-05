@@ -8,6 +8,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5"
+    "@supabase/supabase-js": "^2.111.0",
+    "dotenv": "^16.6.1"
   }
 }
