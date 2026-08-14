@@ -47,7 +47,34 @@ const SEARCHES = [
         startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps5',
         maxPages: 20,
     },
-    // adicionar mais buscas aqui conforme necessário (ex: ps4, xbox, etc)
+    {
+        category: 'videogame_console',
+        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps4',
+        maxPages: 20,
+    },
+    {
+        category: 'videogame_console',
+        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps3',
+        maxPages: 20,
+    },
+    {
+        category: 'videogame_console',
+        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps2',
+        maxPages: 20,
+    },
+    {
+        // Xbox fica numa busca só (sem separar por geração): ao contrário do
+        // PlayStation, os vendedores escrevem "Xbox 360"/"Xbox One"/"Xbox
+        // Series" por extenso no título, então q=xbox já cobre bem todas as
+        // gerações sem precisar de uma run por modelo.
+        category: 'videogame_console',
+        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=xbox',
+        maxPages: 20,
+    },
+    // PlayStation continua separado por geração (ps5/ps4/ps3/ps2 acima)
+    // porque os vendedores normalmente abreviam ("PS5", "PS4") em vez de
+    // escrever "Playstation" por extenso — uma busca única por "playstation"
+    // arriscaria perder boa parte dos anúncios.
 ];
 
 // ------------------------------------------------------------------
@@ -190,12 +217,24 @@ Exemplos INCORRETOS (não faça): "iphone-13-128gb-azul-marinho", "iphone-13-pre
 
 IMPORTANTE sobre variant (videogame/consoles): inclua APENAS modelo, edição
 (fat/slim/pro, quando aplicável) e armazenamento (quando disponível), nessa ordem.
+Cobre tanto linha PlayStation (ps2 a ps5) quanto linha Xbox (360 ao modelo mais
+recente) — trate ambas as marcas com a mesma lógica de modelo+edição+armazenamento.
 NÃO inclua se o anúncio é sobre versão "digital" ou "física" do console — isso é uma
 característica do anúncio, não uma variante de modelo, e não deve aparecer no variant.
 NÃO inclua acessórios inclusos no pacote (ex: "com 2 controles") no variant.
-Exemplos corretos: "ps5-slim", "ps5-slim-1tb", "ps4-pro-1tb", "ps3-slim".
-Exemplos INCORRETOS (não faça): "ps5-digital", "ps5-slim-fisico", "ps5-slim-2-controles".
-Se o armazenamento não for mencionado no título, use só modelo+edição: "ps5-slim".
+Exemplos corretos (PlayStation): "ps5-slim", "ps5-slim-1tb", "ps4-pro-1tb", "ps3-slim",
+"ps2-slim", "ps2-fat".
+Exemplos corretos (Xbox): "xbox-360", "xbox-360-slim", "xbox-one", "xbox-one-s",
+"xbox-one-x-1tb", "xbox-series-s", "xbox-series-x".
+Exemplos INCORRETOS (não faça): "ps5-digital", "ps5-slim-fisico", "ps5-slim-2-controles",
+"xbox-360-arcade-com-kinect".
+Se o armazenamento não for mencionado no título, use só modelo+edição: "ps5-slim",
+"xbox-series-s". "Xbox Series X" e "Xbox Series S" são modelos diferentes (X tem mais
+armazenamento e suporta 4K nativo) — nunca junte os dois num variant genérico
+"xbox-series"; use sempre "xbox-series-x" ou "xbox-series-s" conforme o título indicar.
+Se o título disser apenas "Xbox Series" sem especificar X ou S, e não houver outra pista
+(preço, armazenamento, foto/descrição mencionando cor), classifique como categoryMatch
+false por ambiguidade, em vez de chutar entre X e S.
 
 IMPORTANTE sobre condition: este é um mercado de produtos usados — a ausência de
 sinal claro de "novo" já é, por si só, evidência de que o produto é usado. Frases
@@ -370,7 +409,10 @@ function calcularOpportunityLevel(price, mediaRow) {
         return 'nenhuma';
     }
 
-    const precoReferencia = Number(mediaRow.preco_mediano);  // ← usa preco_mediano
+    // preco_mediano já vem ajustado (mediana × (1 - desconto_pct/100),
+    // aplicado dentro de media_precos_mercado) pra compensar o viés de
+    // preço pedido vs. preço de venda real — não usar preco_medio aqui.
+    const precoReferencia = Number(mediaRow.preco_mediano);
     const desconto = (precoReferencia - Number(price)) / precoReferencia;
     if (desconto >= 0.30) return 'extraordinaria';
     if (desconto >= 0.25) return 'otima';
