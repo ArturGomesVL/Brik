@@ -467,6 +467,17 @@ async function processValidItems(validItems, category, mediaMap) {
     const historicoRows = [];
 
     for (const item of dedupedItems) {
+        // price > 0 é exigido pelo check constraint de anuncios_ativos e
+        // historico_precos. Anúncios "a combinar", doação/troca, ou com
+        // falha de parsing do preço no Actor chegam aqui com price
+        // nulo/0/negativo — descarta só esse item em vez de deixar o
+        // upsert em lote inteiro falhar por causa de uma linha ruim.
+        const priceNum = Number(item.price);
+        if (!(priceNum > 0)) {
+            console.warn(`  Item descartado (price inválido: ${item.price}): ${item.url}`);
+            continue;
+        }
+
         const existing = existingMap.get(item.url);
         const isNew = existing === undefined;
         const priceChanged = !isNew && Number(existing.price) !== Number(item.price);
