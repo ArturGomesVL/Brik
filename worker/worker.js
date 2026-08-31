@@ -14,6 +14,8 @@
 // Rodar manualmente por enquanto: node worker.js
 require('dotenv').config(); console.log('SUPABASE_URL:', JSON.stringify(process.env.SUPABASE_URL));
 const { createClient } = require('@supabase/supabase-js');
+const { execFile } = require('child_process');
+const os = require('os');
 
 // ------------------------------------------------------------------
 // Configuração — tudo via variáveis de ambiente, nunca hardcoded
@@ -27,6 +29,19 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 const BATCH_SIZE = 25;
 
+// Antes de apagar um anúncio por 3 strikes, o worker confirma direto no
+// OLX se ele saiu mesmo do ar (a raspagem perde anúncio ativo por
+// re-ranqueamento/hiccup, não só por venda). STRIKE_VERIFY=false volta ao
+// comportamento antigo (apaga com 3 strikes sem confirmar).
+const VERIFY_STRIKES_ON_OLX = process.env.STRIKE_VERIFY !== 'false';
+const OLX_PROBE_CONCURRENCY = 3;
+const OLX_PROBE_TIMEOUT_MS = 15000;
+// Acima disso, provável raspagem quebrada (não venda em massa) — nem
+// verifica nem aplica strike neste ciclo.
+const OLX_PROBE_MAX = 250;
+const BROWSER_UA =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 
 // Categoria e baseModel de cada busca — no MVP, roda uma vez pra cada
@@ -35,42 +50,42 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const SEARCHES = [
 
 
-    /*{
+    {
         category: 'iphone',
         startUrl: 'https://www.olx.com.br/celulares/estado-pe?q=iphone',
         maxPages: 25,
-    },*/
+    },
 
-
-    {
-        category: 'videogame_console',
-        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps5',
-        maxPages: 20,
-    },
-    {
-        category: 'videogame_console',
-        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps4',
-        maxPages: 20,
-    },
-    {
-        category: 'videogame_console',
-        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps3',
-        maxPages: 20,
-    },
-    {
-        category: 'videogame_console',
-        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps2',
-        maxPages: 20,
-    },
-    {
-        // Xbox fica numa busca só (sem separar por geração): ao contrário do
-        // PlayStation, os vendedores escrevem "Xbox 360"/"Xbox One"/"Xbox
-        // Series" por extenso no título, então q=xbox já cobre bem todas as
-        // gerações sem precisar de uma run por modelo.
-        category: 'videogame_console',
-        startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=xbox',
-        maxPages: 20,
-    },
+    /*
+        {
+            category: 'videogame_console',
+            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps5',
+            maxPages: 20,
+        },
+        {
+            category: 'videogame_console',
+            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps4',
+            maxPages: 20,
+        },
+        {
+            category: 'videogame_console',
+            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps3',
+            maxPages: 20,
+        },
+        {
+            category: 'videogame_console',
+            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps2',
+            maxPages: 20,
+        },
+        {
+            // Xbox fica numa busca só (sem separar por geração): ao contrário do
+            // PlayStation, os vendedores escrevem "Xbox 360"/"Xbox One"/"Xbox
+            // Series" por extenso no título, então q=xbox já cobre bem todas as
+            // gerações sem precisar de uma run por modelo.
+            category: 'videogame_console',
+            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=xbox',
+            maxPages: 20,
+        }, */
     // PlayStation continua separado por geração (ps5/ps4/ps3/ps2 acima)
     // porque os vendedores normalmente abreviam ("PS5", "PS4") em vez de
     // escrever "Playstation" por extenso — uma busca única por "playstation"
@@ -537,10 +552,64 @@ async function processValidItems(validItems, category, mediaMap) {
     return dedupedItems.map((item) => item.url);
 }
 
+// Extrai o ID numérico do anúncio a partir da URL canônica (/vi/<id>).
+function extractAdId(url) {
+    const m = String(url || '').match(/(\d{6,})/);
+    return m ? m[1] : null;
+}
+
+// GET via curl (não via fetch): o Cloudflare do OLX bloqueia o
+// fingerprint TLS do undici/fetch com 403, mas deixa o curl passar.
+// Retorna o status HTTP, ou null se o curl falhou/não existe.
+function curlStatus(url) {
+    return new Promise((resolve) => {
+        execFile(
+            'curl',
+            [
+                '-s', '-o', os.devNull, '-w', '%{http_code}',
+                '-A', BROWSER_UA,
+                '-L', '--max-time', String(Math.ceil(OLX_PROBE_TIMEOUT_MS / 1000)),
+                url,
+            ],
+            { timeout: OLX_PROBE_TIMEOUT_MS + 5000, windowsHide: true },
+            (err, stdout) => {
+                if (err) return resolve(null);
+                const code = parseInt(String(stdout).trim(), 10);
+                resolve(Number.isFinite(code) ? code : null);
+            }
+        );
+    });
+}
+
+// Confirma direto no OLX se o anúncio ainda está no ar. A forma curta
+// /vi/<id> responde bem mesmo de IP de datacenter:
+//   200      -> anúncio ativo            => 'alive'  (não dar strike)
+//   410/404  -> "Anúncio não encontrado" => 'gone'   (pode apagar)
+//   null / 403 / 5xx / sem id            => 'inconclusive' (adia)
+async function probeOlxAd(url) {
+    const id = extractAdId(url);
+    if (!id) return 'inconclusive';
+    const status = await curlStatus(`https://www.olx.com.br/vi/${id}`);
+    if (status === 200) return 'alive';
+    if (status === 410 || status === 404) return 'gone';
+    return 'inconclusive';
+}
+
+async function probeMany(rows) {
+    const verdicts = new Map();
+    for (let i = 0; i < rows.length; i += OLX_PROBE_CONCURRENCY) {
+        const batch = rows.slice(i, i + OLX_PROBE_CONCURRENCY);
+        const results = await Promise.all(batch.map((row) => probeOlxAd(row.url)));
+        batch.forEach((row, j) => verdicts.set(row.url, results[j]));
+    }
+    return verdicts;
+}
+
 // ------------------------------------------------------------------
 // Passo 6 — Tratar strikes: anúncios ativos dessa categoria que não
-// apareceram nesta raspagem (currentUrls) ganham +1 strike; ao chegar
-// a 3, a linha é deletada (hard delete, em lotes de 40 no .in()).
+// apareceram nesta raspagem (currentUrls) ganham +1 strike. Ao chegar
+// a 3, antes de apagar (hard delete), o worker confirma no OLX que o
+// anúncio realmente saiu do ar — anúncio ainda ativo volta a strikes=0.
 // ------------------------------------------------------------------
 async function handleStrikes(category, currentUrls) {
     const { data: activeRows, error: fetchError } = await supabase
@@ -551,17 +620,64 @@ async function handleStrikes(category, currentUrls) {
     if (fetchError) throw new Error(`Erro ao consultar anuncios_ativos p/ strikes: ${fetchError.message}`);
 
     const currentSet = new Set(currentUrls);
-    const missing = (activeRows || []).filter((row) => !currentSet.has(row.url));
+    const activeList = activeRows || [];
+    const missing = activeList.filter((row) => !currentSet.has(row.url));
 
-    const toDelete = [];
-    const toUpdate = [];
+    // Trava de segurança contra raspagem incompleta: se esta run enxergou
+    // muito menos anúncios do que temos ativos no banco (bloqueio do OLX,
+    // paginação interrompida, timeout do Actor), aplicar strike em massa
+    // apagaria anúncios que continuam no ar. Nesse caso, pula o ciclo de
+    // strikes desta run — perder um ciclo é inofensivo (o anúncio real
+    // reaparece na próxima), apagar indevidamente não tem volta.
+    const MIN_COBERTURA = 0.5;
+    if (activeList.length >= 10 && currentSet.size < activeList.length * MIN_COBERTURA) {
+        const pct = Math.round((100 * currentSet.size) / activeList.length);
+        console.warn(
+            `   ⚠ Strikes PULADOS (${category}): raspagem viu ${currentSet.size} anúncios ` +
+            `vs. ${activeList.length} ativos no banco (${pct}%). Provável raspagem incompleta.`
+        );
+        return;
+    }
+
+    const toUpdate = [];        // { url, strikes }
+    const gateCandidates = [];  // atingiriam 3 strikes → passam pela verificação no OLX
 
     for (const row of missing) {
         const newStrikes = row.strikes + 1;
         if (newStrikes >= 3) {
-            toDelete.push(row.url);
+            gateCandidates.push(row);
         } else {
             toUpdate.push({ url: row.url, strikes: newStrikes });
+        }
+    }
+
+    const toDelete = [];
+    let aliveCount = 0;
+    let inconclusiveCount = 0;
+
+    if (gateCandidates.length > OLX_PROBE_MAX) {
+        console.warn(
+            `   ⚠ ${gateCandidates.length} anúncios atingiriam 3 strikes (> ${OLX_PROBE_MAX}): ` +
+            `provável raspagem quebrada, não venda. Nada apagado neste ciclo.`
+        );
+    } else if (gateCandidates.length === 0) {
+        // nada a verificar
+    } else if (!VERIFY_STRIKES_ON_OLX) {
+        gateCandidates.forEach((row) => toDelete.push(row.url));
+    } else {
+        console.log(`   Verificando ${gateCandidates.length} candidato(s) a exclusão direto no OLX...`);
+        const verdicts = await probeMany(gateCandidates);
+        for (const row of gateCandidates) {
+            const verdict = verdicts.get(row.url);
+            if (verdict === 'gone') {
+                toDelete.push(row.url);
+            } else if (verdict === 'alive') {
+                aliveCount++;
+                toUpdate.push({ url: row.url, strikes: 0 }); // confirmado ativo → zera
+            } else {
+                inconclusiveCount++;
+                toUpdate.push({ url: row.url, strikes: 3 }); // trava em 3, re-verifica depois
+            }
         }
     }
 
@@ -585,7 +701,14 @@ async function handleStrikes(category, currentUrls) {
         if (error) throw new Error(`Erro ao deletar anúncios com 3 strikes: ${error.message}`);
     }
 
-    console.log(`   Strikes incrementados: ${toUpdate.length}. Removidos (3 strikes): ${toDelete.length}.`);
+    console.log(
+        `   Strikes: ${missing.length} ausentes | ${toDelete.length} removidos (confirmados fora do ar) | ` +
+        `${aliveCount} ainda ativos (strike zerado) | ${inconclusiveCount} inconclusivos (adiado).`
+    );
+    if (toDelete.length > 0) {
+        console.log('   Removidos:');
+        toDelete.forEach((url) => console.log(`     ${url}`));
+    }
 }
 
 // ------------------------------------------------------------------

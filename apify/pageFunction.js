@@ -5,16 +5,41 @@ async function pageFunction(context) {
     const startUrl = (request.userData && request.userData.startUrl) || request.url;
     const pageNumber = (request.userData && request.userData.pageNumber) || 1;
 
-    // Página 1 = sem parâmetro "o". Página 2 em diante = "o" começando em 1
-    // (ex.: página 2 -> &o=1, página 3 -> &o=2, ...).
+    // O OLX pagina pelo parâmetro "o" = número da página (1-indexado):
+    // página 1 = sem "o", página 2 -> &o=2, página 3 -> &o=3, ...
     function buildPageUrl(baseUrl, pageNum) {
         const url = new URL(baseUrl);
         if (pageNum > 1) {
-            url.searchParams.set('o', String(pageNum)); // sem o "-1"
+            url.searchParams.set('o', String(pageNum));
         } else {
             url.searchParams.delete('o');
         }
         return url.toString();
+    }
+
+    // ------------------------------------------------------------
+    // Canonicaliza a URL do anúncio pelo ID numérico (6+ dígitos no
+    // fim do path). Um mesmo anúncio aparece no OLX sob várias formas
+    // entre páginas/renderizações/ciclos de raspagem:
+    //   - query string de rastreamento (?rec=u&gallery_id=top_3060&...)
+    //   - sufixo ".html"/".htm" ou barra final
+    //   - subdomínio regional (pe.olx.com.br) vs www.olx.com.br
+    //   - slug diferente antes do ID
+    // Sem reduzir tudo ao ID, o worker trata cada variação como um
+    // anúncio novo: o registro salvo no ciclo anterior "some" da
+    // raspagem e leva strike mesmo continuando ativo (e ainda gasta
+    // classificação de IA de novo). /vi/<id> é a forma curta canônica
+    // do próprio OLX e redireciona pro anúncio completo.
+    // ------------------------------------------------------------
+    function normalizeUrl(url) {
+        try {
+            const u = new URL(url);
+            const idMatch = u.pathname.match(/(\d{6,})(?:\.html?)?\/?$/i);
+            if (idMatch) return `https://www.olx.com.br/vi/${idMatch[1]}`;
+            return `https://www.olx.com.br${u.pathname.replace(/\/+$/, '')}`;
+        } catch (e) {
+            return url;
+        }
     }
 
     await page.waitForTimeout(2000);
@@ -56,23 +81,6 @@ async function pageFunction(context) {
             const normalized = withoutThousands.replace(',', '.');
             const value = parseFloat(normalized);
             return isNaN(value) ? null : Math.round(value);
-        }
-
-        function normalizeUrl(url) {
-            try {
-                const u = new URL(url);
-                // Extrai o(s) grupo(s) de dígitos do caminho — o ID do anúncio é
-                // sempre o último grupo numérico longo (6+ dígitos) no final da URL,
-                // independente do formato (curto "/vi/{id}" ou longo com slug).
-                const matches = u.pathname.match(/\d{6,}/g);
-                if (matches && matches.length > 0) {
-                    const adId = matches[matches.length - 1];
-                    return `${u.origin}/vi/${adId}`;
-                }
-                return `${u.origin}${u.pathname}`;
-            } catch (e) {
-                return url;
-            }
         }
 
         function splitLocationAndDate(raw) {
@@ -139,6 +147,20 @@ async function pageFunction(context) {
             return null;
         }
 
+        // Mesma canonicalização por ID do normalizeUrl de fora — este
+        // escopo roda no browser e não compartilha closure, então
+        // precisa da própria cópia. Manter as duas idênticas.
+        function normalizeUrl(url) {
+            try {
+                const u = new URL(url);
+                const idMatch = u.pathname.match(/(\d{6,})(?:\.html?)?\/?$/i);
+                if (idMatch) return `https://www.olx.com.br/vi/${idMatch[1]}`;
+                return `https://www.olx.com.br${u.pathname.replace(/\/+$/, '')}`;
+            } catch (e) {
+                return url;
+            }
+        }
+
         const found = new Map();
 
         const titleEls = document.querySelectorAll(
@@ -179,23 +201,22 @@ async function pageFunction(context) {
         titleEls.forEach((titleEl) => {
             const cardRoot = findCardRoot(titleEl);
             const linkEl = cardRoot.tagName === 'A' ? cardRoot : cardRoot.querySelector('a[href*="olx.com.br"]');
-            const href = linkEl ? linkEl.href : null;
-            if (!href) return;
-            const normalizedUrl = normalizeUrl(href);
-            if (found.has(normalizedUrl)) return;
+            const rawHref = linkEl ? linkEl.href : null;
+            const href = rawHref ? normalizeUrl(rawHref) : null;
+            if (!href || found.has(href)) return;
 
             const locationEl = cardRoot.querySelector('[class*="location"], [data-testid="location-date"]');
             const priceText = findPriceText(cardRoot);
             const rawLocation = locationEl ? locationEl.innerText.trim() : null;
             const { location, postedAt } = splitLocationAndDate(rawLocation);
 
-            found.set(normalizedUrl, {
+            found.set(href, {
                 title: titleEl.innerText.trim(),
                 priceText,
                 price: parsePriceToNumber(priceText),
                 location,
                 postedAtText: postedAt,
-                url: normalizedUrl,
+                url: href,
                 imageUrl: findImageUrl(cardRoot),
             });
         });
@@ -210,9 +231,8 @@ async function pageFunction(context) {
         });
 
         anchors.forEach((a) => {
-            const href = a.href;
-            const normalizedUrl = normalizeUrl(href);
-            if (found.has(normalizedUrl)) return;
+            const href = normalizeUrl(a.href);
+            if (found.has(href)) return;
 
             let root = a;
             for (let i = 0; i < 6; i++) {
@@ -230,13 +250,13 @@ async function pageFunction(context) {
             const rawLocation = locationEl ? locationEl.innerText.trim() : null;
             const { location, postedAt } = splitLocationAndDate(rawLocation);
 
-            found.set(normalizedUrl, {
+            found.set(href, {
                 title,
                 priceText,
                 price: parsePriceToNumber(priceText),
                 location,
                 postedAtText: postedAt,
-                url: normalizedUrl,
+                url: href,
                 imageUrl: findImageUrl(root) || findImageUrl(root.parentElement || root),
             });
         });
@@ -248,7 +268,29 @@ async function pageFunction(context) {
     });
 
     if (results.debug) {
-        log.warning('Nenhum anúncio encontrado — devolvendo amostra do HTML pra ajuste.');
+        log.warning('Página ' + pageNumber + ' sem anúncios (possível bloqueio/captcha do OLX).');
+
+        // Uma página vazia/bloqueada NÃO pode encerrar a paginação: sem
+        // enfileirar a próxima, todos os anúncios das páginas seguintes
+        // somem da raspagem e levam strike sem estar inativos. Continua
+        // tentando, até um teto de páginas vazias consecutivas.
+        const emptyStreak = (globalStore.get('emptyStreak') || 0) + 1;
+        globalStore.set('emptyStreak', emptyStreak);
+
+        if (emptyStreak < 3 && pageNumber < MAX_PAGES) {
+            try {
+                await enqueueRequest({
+                    url: buildPageUrl(startUrl, pageNumber + 1),
+                    userData: { startUrl, pageNumber: pageNumber + 1 },
+                });
+                log.info('Página ' + (pageNumber + 1) + ' enfileirada apesar da página ' + pageNumber + ' ter vindo vazia.');
+            } catch (e) {
+                log.error('Falha ao enfileirar página ' + (pageNumber + 1) + ': ' + e.message);
+            }
+        } else {
+            log.warning('Encerrando paginação após ' + emptyStreak + ' páginas vazias consecutivas.');
+        }
+
         return [{ debug: true, url: request.url, pageNumber, htmlSample: results.htmlSample }];
     }
 
@@ -289,6 +331,9 @@ async function pageFunction(context) {
         });
         log.warning('DIAGNÓSTICO DE CARD: ' + JSON.stringify(cardSample));
     }
+
+    // Página veio com anúncios: zera o contador de páginas vazias.
+    globalStore.set('emptyStreak', 0);
 
     let seenUrls = globalStore.get('seenUrls');
     if (!seenUrls) {
