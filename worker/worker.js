@@ -1,30 +1,36 @@
 // worker.js
 //
-// Worker de ingestão do Brique — conecta Apify (raspagem) → cache de
-// classificação → Claude Haiku → (próximo passo: Supabase).
+// Worker de ingestão do Brique — conecta scraper Python (Selenium) → cache
+// de classificação → Claude Haiku → Supabase.
 //
-// Nesta primeira versão, cobre só os passos 1-3:
-//   1. Dispara o Actor da Apify e pega os itens raspados
-//   2. Separa o que já está em cache (classificacoes_ia) do que é novo
-//   3. Classifica os itens novos em lote via Claude Haiku
-//
-// Ainda NÃO grava nada no Supabase — isso entra na próxima etapa,
-// depois de validar que os passos 1-3 funcionam com dado real.
+// Fluxo:
+//   1. Roda o script Python (Selenium) como subprocesso e espera terminar
+//   2. Lê e valida o JSON gerado pelo script
+//   3. Separa o que já está em cache (classificacoes_ia) do que é novo
+//   4. Classifica os itens novos em lote via Claude Haiku
+//   5. Grava em anuncios_ativos / historico_precos e trata strikes
 //
 // Rodar manualmente por enquanto: node worker.js
 require('dotenv').config(); console.log('SUPABASE_URL:', JSON.stringify(process.env.SUPABASE_URL));
 const { createClient } = require('@supabase/supabase-js');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 
 // ------------------------------------------------------------------
 // Configuração — tudo via variáveis de ambiente, nunca hardcoded
 // ------------------------------------------------------------------
-const APIFY_TOKEN = process.env.APIFY_TOKEN;
-const APIFY_TASK_ID = process.env.APIFY_TASK_ID;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// Caminho do app.py (Selenium) e do interpretador que tem o Selenium
+// instalado (se você usa venv, aponte pro python.exe de dentro dele —
+// senão o subprocess pode cair no Python global, sem as libs certas).
+const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || 'python';
+const PYTHON_SCRIPT_PATH = process.env.PYTHON_SCRIPT_PATH;
+const PYTHON_TIMEOUT_MS = Number(process.env.PYTHON_TIMEOUT_MS) || 30 * 60 * 1000; // 30 min de segurança, ajuste via env se precisar
 
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 const BATCH_SIZE = 25;
@@ -44,118 +50,165 @@ const BROWSER_UA =
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 
-// Categoria e baseModel de cada busca — no MVP, roda uma vez pra cada
-// entrada desta lista. Ajuste as URLs pra bater com as Start URLs
-// configuradas no Actor da Apify.
-const SEARCHES = [
-
-
-    {
-        category: 'iphone',
-        startUrl: 'https://www.olx.com.br/celulares/estado-pe?q=iphone',
-        maxPages: 25,
-    },
-
-    /*
-        {
-            category: 'videogame_console',
-            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps5',
-            maxPages: 20,
-        },
-        {
-            category: 'videogame_console',
-            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps4',
-            maxPages: 20,
-        },
-        {
-            category: 'videogame_console',
-            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps3',
-            maxPages: 20,
-        },
-        {
-            category: 'videogame_console',
-            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=ps2',
-            maxPages: 20,
-        },
-        {
-            // Xbox fica numa busca só (sem separar por geração): ao contrário do
-            // PlayStation, os vendedores escrevem "Xbox 360"/"Xbox One"/"Xbox
-            // Series" por extenso no título, então q=xbox já cobre bem todas as
-            // gerações sem precisar de uma run por modelo.
-            category: 'videogame_console',
-            startUrl: 'https://www.olx.com.br/games/consoles-de-video-game/estado-pe?q=xbox',
-            maxPages: 20,
-        }, */
-    // PlayStation continua separado por geração (ps5/ps4/ps3/ps2 acima)
-    // porque os vendedores normalmente abreviam ("PS5", "PS4") em vez de
-    // escrever "Playstation" por extenso — uma busca única por "playstation"
-    // arriscaria perder boa parte dos anúncios.
-];
+// O app.py define BUSCA/CATEGORIA/CONDICAO internamente (editado à mão
+// antes de cada execução — não recebe argumentos do worker) e devolve a
+// categoria OLX (slug) dentro do próprio JSON gerado. Este mapa traduz o
+// slug do OLX pra categoria interna usada no resto do pipeline
+// (classificação + upsert), evitando manter uma lista de buscas separada
+// no Node que podia ficar desincronizada do que o script realmente raspou.
+const CATEGORIA_OLX_PARA_INTERNA = {
+    celulares: 'iphone',
+    games: 'videogame_console',
+};
 
 // ------------------------------------------------------------------
-// Passo 1 — Disparar o Actor da Apify e pegar os itens do dataset
+// Passo 1 — Rodar o script Python (Selenium) como subprocesso e ler o
+// JSON que ele gera ao final.
+//
+// spawn (em vez de execFile) porque: a raspagem pode levar minutos e gerar
+// bastante log (execFile bufferiza stdout/stderr inteiro e tem um
+// maxBuffer default de 1MB, que esse volume de log pode passar fácil);
+// spawn dá o handle do processo pra matar no timeout (child.kill()); e os
+// argumentos vão como array, sem shell, então um caminho com espaço (ex:
+// "scrapping python\app.py") funciona sem escaping manual e sem risco de
+// injeção de comando.
 // ------------------------------------------------------------------
-async function runApifyActor(startUrl, maxPages = 25) {
-    // 1. Dispara a run (não espera terminar)
-    const startResponse = await fetch(
-        `https://api.apify.com/v2/actor-tasks/${APIFY_TASK_ID}/runs?token=${APIFY_TOKEN}`,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                startUrls: [{ url: startUrl }],
-                maxPages,
-            }),
+async function runPythonScraper() {
+    if (!PYTHON_SCRIPT_PATH) {
+        throw new Error('PYTHON_SCRIPT_PATH não está definido. Configure o caminho do app.py no .env.');
+    }
+
+    const scriptDir = path.dirname(PYTHON_SCRIPT_PATH);
+    const startedAt = Date.now();
+
+    console.log(`[scraper] Iniciando: ${PYTHON_EXECUTABLE} "${PYTHON_SCRIPT_PATH}"`);
+
+    await new Promise((resolve, reject) => {
+        const child = spawn(PYTHON_EXECUTABLE, [PYTHON_SCRIPT_PATH], { cwd: scriptDir });
+        let timedOut = false;
+
+        const timer = setTimeout(() => {
+            timedOut = true;
+            console.error(`[scraper] Excedeu o timeout de ${PYTHON_TIMEOUT_MS / 1000}s — encerrando processo.`);
+            child.kill();
+        }, PYTHON_TIMEOUT_MS);
+
+        child.stdout.on('data', (chunk) => process.stdout.write(`[scraper] ${chunk}`));
+        child.stderr.on('data', (chunk) => process.stderr.write(`[scraper] ${chunk}`));
+
+        child.on('error', (err) => {
+            clearTimeout(timer);
+            reject(new Error(`Falha ao iniciar o script Python: ${err.message}`));
+        });
+
+        child.on('close', (code) => {
+            clearTimeout(timer);
+            if (timedOut) {
+                reject(new Error(`Script Python excedeu o timeout de ${PYTHON_TIMEOUT_MS / 1000}s e foi encerrado.`));
+            } else if (code !== 0) {
+                reject(new Error(`Script Python terminou com exit code ${code}.`));
+            } else {
+                resolve();
+            }
+        });
+    });
+
+    console.log('[scraper] Processo Python finalizado. Procurando JSON gerado...');
+
+    const jsonFile = findLatestJsonFile(scriptDir, startedAt);
+    if (!jsonFile) {
+        throw new Error(`Nenhum arquivo .json encontrado em "${scriptDir}" criado durante esta execução.`);
+    }
+
+    console.log(`[scraper] Lendo resultado: ${jsonFile}`);
+    const raw = fs.readFileSync(jsonFile, 'utf-8');
+
+    let payload;
+    try {
+        payload = JSON.parse(raw);
+    } catch (err) {
+        throw new Error(`Falha ao parsear JSON gerado pelo script Python (${jsonFile}): ${err.message}`);
+    }
+
+    return payload;
+}
+
+// O app.py nomeia o arquivo de saída como busca-estado-condicao-timestamp.json
+// — em vez de replicar esse formato aqui (e desincronizar se o script
+// mudar o padrão), pegamos o .json mais recente na pasta de saída criado
+// depois do início desta execução.
+function findLatestJsonFile(dir, sinceMs) {
+    const candidates = fs.readdirSync(dir)
+        .filter((name) => name.endsWith('.json'))
+        .map((name) => {
+            const fullPath = path.join(dir, name);
+            return { fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs };
+        })
+        .filter((file) => file.mtimeMs >= sinceMs - 2000); // margem pra diferença de clock
+
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return candidates[0].fullPath;
+}
+
+// O campo Imagem vem do atributo srcset do <img> (ex: "url1 1x, url2 2x"),
+// não uma URL limpa — pega o último candidato (maior resolução), igual o
+// pageFunction do Apify fazia antes de ser removido.
+function bestImageFromSrcset(srcset) {
+    if (!srcset) return null;
+    const entries = srcset.split(',').map((s) => s.trim().split(' ')[0]).filter(Boolean);
+    return entries.length ? entries[entries.length - 1] : null;
+}
+
+// ------------------------------------------------------------------
+// Passo 2 — Validar o JSON do scraper (array não vazio + campos
+// obrigatórios) e mapear os campos do app.py (Titulo, Preco, Local,
+// Imagem, Link) pros nomes que o resto do pipeline já espera (title,
+// price, location, imageUrl, url). Item sem título/link/preço válido é
+// descartado em vez de travar o worker inteiro.
+// ------------------------------------------------------------------
+function mapAndValidateScraperOutput(payload) {
+    const categoriaOlx = payload && payload.categoria;
+    const category = CATEGORIA_OLX_PARA_INTERNA[categoriaOlx];
+    if (!category) {
+        throw new Error(`Categoria OLX "${categoriaOlx}" não mapeada em CATEGORIA_OLX_PARA_INTERNA.`);
+    }
+
+    const anuncios = Array.isArray(payload.anuncios) ? payload.anuncios : [];
+    if (anuncios.length === 0) {
+        throw new Error('JSON do scraper não contém nenhum anúncio (campo "anuncios" vazio ou ausente).');
+    }
+
+    const items = [];
+    let descartados = 0;
+
+    for (const raw of anuncios) {
+        const title = (raw.Titulo || '').trim();
+        const url = raw.Link;
+        const price = raw.Preco;
+
+        if (!title || !url || typeof price !== 'number' || !(price > 0)) {
+            descartados++;
+            continue;
         }
-    );
 
-    if (!startResponse.ok) {
-        const errText = await startResponse.text();
-        throw new Error(`Apify start run failed: ${startResponse.status} - ${errText}`);
+        items.push({
+            title,
+            url,
+            price,
+            location: raw.Local || null,
+            imageUrl: bestImageFromSrcset(raw.Imagem),
+        });
     }
 
-    const startData = await startResponse.json();
-    const runId = startData.data.id;
-    const datasetId = startData.data.defaultDatasetId;
-
-    console.log(`  Run iniciada (id: ${runId}), aguardando conclusão...`);
-
-    // 2. Fica checando o status a cada 10s, até terminar (sem teto de 5min)
-    let status = startData.data.status;
-    const POLL_INTERVAL_MS = 10000;
-    const MAX_WAIT_MS = 20 * 60 * 1000; // 20 min de segurança, ajuste se precisar
-    const startTime = Date.now();
-
-    while (status === 'RUNNING' || status === 'READY') {
-        if (Date.now() - startTime > MAX_WAIT_MS) {
-            throw new Error(`Run ${runId} excedeu o tempo máximo de espera (${MAX_WAIT_MS / 1000}s).`);
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-
-        const statusResponse = await fetch(
-            `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`
-        );
-        const statusData = await statusResponse.json();
-        status = statusData.data.status;
-        console.log(`  Status da run: ${status}...`);
+    if (descartados > 0) {
+        console.warn(`[scraper] ${descartados} anúncio(s) descartado(s): título, link ou preço inválido/ausente.`);
+    }
+    if (items.length === 0) {
+        throw new Error('Nenhum anúncio com título/link/preço válidos após a validação.');
     }
 
-    if (status !== 'SUCCEEDED') {
-        throw new Error(`Run ${runId} terminou com status ${status} (esperado: SUCCEEDED).`);
-    }
-
-    // 3. Busca os itens do dataset, agora que a run terminou de verdade
-    const itemsResponse = await fetch(
-        `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&clean=true`
-    );
-
-    if (!itemsResponse.ok) {
-        const errText = await itemsResponse.text();
-        throw new Error(`Erro ao buscar itens do dataset: ${itemsResponse.status} - ${errText}`);
-    }
-
-    return itemsResponse.json();
+    return { category, items };
 }
 
 // ------------------------------------------------------------------
@@ -466,7 +519,7 @@ async function selectExistingPrices(urls, chunkSize = 40) {
 // quando o preço muda).
 // ------------------------------------------------------------------
 async function processValidItems(validItems, category, mediaMap) {
-    // Deduplica por url — o Apify pode raspar o mesmo anúncio mais de
+    // Deduplica por url — o scraper pode raspar o mesmo anúncio mais de
     // uma vez (ex: em páginas diferentes da busca), e o Postgres não
     // permite ON CONFLICT DO UPDATE afetar a mesma linha duas vezes
     // dentro de um único comando de upsert. Mantém a última ocorrência.
@@ -715,51 +768,47 @@ async function handleStrikes(category, currentUrls) {
 // Execução principal
 // ------------------------------------------------------------------
 async function run() {
-    for (const search of SEARCHES) {
-        console.log(`\n=== Processando categoria: ${search.category} ===`);
+    console.log('1. Rodando script Python de raspagem...');
+    const payload = await runPythonScraper();
+    const { category, items: rawItemsRaw } = mapAndValidateScraperOutput(payload);
+    console.log(`   ${rawItemsRaw.length} itens válidos raspados (categoria: ${category}).`);
 
-        console.log('1. Rodando Actor da Apify...');
-        const rawItemsRaw = await runApifyActor(search.startUrl, search.maxPages);
-        console.log(`   ${rawItemsRaw.length} itens raspados.`);
+    // Deduplica por url — proteção extra contra duplicatas na raspagem
+    // (ex: mesmo anúncio patrocinado repetido entre páginas).
+    const rawItemsMap = new Map();
+    rawItemsRaw.forEach((item) => rawItemsMap.set(item.url, item));
+    const rawItems = Array.from(rawItemsMap.values());
 
-        // Deduplica por url — proteção extra contra duplicatas na
-        // raspagem, além da normalização de URL feita no pageFunction
-        // do Actor. Mantém a última ocorrência de cada url.
-        const rawItemsMap = new Map();
-        rawItemsRaw.forEach((item) => rawItemsMap.set(item.url, item));
-        const rawItems = Array.from(rawItemsMap.values());
+    console.log('2. Consultando cache de classificação...');
+    const { cached, toClassify } = await splitCachedAndNew(rawItems);
+    console.log(`   ${cached.length} já em cache, ${toClassify.length} novos a classificar.`);
 
-        console.log('2. Consultando cache de classificação...');
-        const { cached, toClassify } = await splitCachedAndNew(rawItems);
-        console.log(`   ${cached.length} já em cache, ${toClassify.length} novos a classificar.`);
+    let newlyClassified = [];
+    if (toClassify.length > 0) {
+        console.log('3. Classificando itens novos via Claude Haiku...');
+        newlyClassified = await classifyAllNew(toClassify, category);
 
-        let newlyClassified = [];
-        if (toClassify.length > 0) {
-            console.log('3. Classificando itens novos via Claude Haiku...');
-            newlyClassified = await classifyAllNew(toClassify, search.category);
+        console.log('   Gravando resultado no cache (classificacoes_ia)...');
+        await saveToCache(newlyClassified);
+    }
 
-            console.log('   Gravando resultado no cache (classificacoes_ia)...');
-            await saveToCache(newlyClassified);
-        }
+    const allClassified = [...cached, ...newlyClassified];
+    const validItems = allClassified.filter((item) => item.category_match === true);
 
-        const allClassified = [...cached, ...newlyClassified];
-        const validItems = allClassified.filter((item) => item.category_match === true);
+    console.log(`\nResumo (${category}):`);
+    console.log(`  Total raspado: ${rawItems.length}`);
+    console.log(`  category_match = true: ${validItems.length}`);
+    console.log(`  category_match = false: ${allClassified.length - validItems.length}`);
 
-        console.log(`\nResumo (${search.category}):`);
-        console.log(`  Total raspado: ${rawItems.length}`);
-        console.log(`  category_match = true: ${validItems.length}`);
-        console.log(`  category_match = false: ${allClassified.length - validItems.length}`);
+    if (validItems.length > 0) {
+        console.log('4. Calculando médias...');
+        const mediaMap = await getMediaCache(validItems);
 
-        if (validItems.length > 0) {
-            console.log('4. Calculando médias...');
-            const mediaMap = await getMediaCache(validItems);
+        console.log('5. Gravando em anuncios_ativos e historico_precos...');
+        const processedUrls = await processValidItems(validItems, category, mediaMap);
 
-            console.log('5. Gravando em anuncios_ativos e historico_precos...');
-            const processedUrls = await processValidItems(validItems, search.category, mediaMap);
-
-            console.log('6. Tratando strikes...');
-            await handleStrikes(search.category, processedUrls);
-        }
+        console.log('6. Tratando strikes...');
+        await handleStrikes(category, processedUrls);
     }
 }
 
