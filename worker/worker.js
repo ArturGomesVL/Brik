@@ -17,6 +17,7 @@ const { execFile, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const { canonicalizeVariant } = require('./variantNormalizer');
 
 // ------------------------------------------------------------------
 // Configuração — tudo via variáveis de ambiente, nunca hardcoded
@@ -336,6 +337,15 @@ disponível), nessa ordem, em minúsculo e separado por hífen. NÃO inclua cor,
 região (ex: "americano", "japonês"), nem outros detalhes.
 Exemplos corretos: "iphone-13-128gb", "iphone-15-pro-max-256gb".
 Exemplos INCORRETOS (não faça): "iphone-13-128gb-azul-marinho", "iphone-13-preto".
+O MODELO é obrigatório no variant: nunca devolva só "iphone" nem "iphone-pro-max" sem o
+número/nome do modelo. Se o título não permitir identificar o modelo (ex: "iPhone novíssimo",
+"iPhone pro max 256"), devolva variant null (categoryMatch continua true se for um iPhone
+físico). Escreva o modelo sempre com hífen entre as palavras: "iphone-xs-max",
+"iphone-11-pro-max", "iphone-8-plus", "iphone-13-mini", "iphone-16e", "iphone-air".
+ARMAZENAMENTO: inclua SEMPRE que aparecer no título, mesmo abreviado ("128", "128g",
+"128 gb", "1tb"), no formato "128gb" ou "1tb". Se não aparecer, NÃO invente — omita.
+iPhone SE: inclua o ano da geração ("iphone-se-2016", "iphone-se-2020", "iphone-se-2022");
+se o título não permitir saber a geração, devolva variant null.
 
 IMPORTANTE sobre variant (videogame/consoles): inclua APENAS modelo, edição
 (fat/slim/pro, quando aplicável) e armazenamento (quando disponível), nessa ordem.
@@ -851,6 +861,59 @@ async function handleStrikes(category, currentUrls) {
 }
 
 // ------------------------------------------------------------------
+// Regras de variant — canonicaliza o variant de cada anúncio reconhecido
+// pela IA (menos granular, ver variantNormalizer.js) e separa os que não
+// têm modelo reconhecível: esses NÃO entram em anuncios_ativos nem em
+// historico_precos (que alimenta as médias de mercado).
+// ------------------------------------------------------------------
+function applyVariantRules(allClassified) {
+    const validItems = [];
+    const rejectedUrls = [];
+    const reasons = new Map();
+
+    for (const item of allClassified) {
+        if (item.category_match !== true) continue;
+
+        const { variant, reason } = canonicalizeVariant(item.category, item.variant);
+        if (variant === null) {
+            rejectedUrls.push(item.url);
+            reasons.set(reason, (reasons.get(reason) || 0) + 1);
+            continue;
+        }
+        validItems.push({ ...item, variant });
+    }
+
+    return { validItems, rejectedUrls, reasons };
+}
+
+function printTop(counts, limit) {
+    [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .forEach(([label, qtd]) => console.log(`    ${label}: ${qtd}`));
+}
+
+// Um anúncio que já estava no banco e agora é rejeitado (regra nova, ou
+// reclassificação) sairia da raspagem "válida" e acabaria zumbi — o
+// probeOlxAd do passo de strikes o confirmaria ativo e zeraria o strike
+// pra sempre. Remove direto.
+async function removeRejectedFromActive(urls, chunkSize = 40) {
+    let removed = 0;
+    for (let i = 0; i < urls.length; i += chunkSize) {
+        const chunk = urls.slice(i, i + chunkSize);
+        const { data, error } = await supabase
+            .from('anuncios_ativos')
+            .delete()
+            .in('url', chunk)
+            .select('url');
+
+        if (error) throw new Error(`Erro ao remover anúncios rejeitados de anuncios_ativos: ${error.message}`);
+        removed += data.length;
+    }
+    return removed;
+}
+
+// ------------------------------------------------------------------
 // Execução principal
 // ------------------------------------------------------------------
 async function run() {
@@ -879,12 +942,23 @@ async function run() {
     }
 
     const allClassified = [...cached, ...newlyClassified];
-    const validItems = allClassified.filter((item) => item.category_match === true);
+    const matchCount = allClassified.filter((item) => item.category_match === true).length;
+    const { validItems, rejectedUrls, reasons } = applyVariantRules(allClassified);
 
     console.log(`\nResumo (${category}):`);
     console.log(`  Total raspado: ${rawItems.length}`);
-    console.log(`  category_match = true: ${validItems.length}`);
-    console.log(`  category_match = false: ${allClassified.length - validItems.length}`);
+    console.log(`  category_match = true: ${matchCount}`);
+    console.log(`  category_match = false: ${allClassified.length - matchCount}`);
+    console.log(`  modelo não reconhecido (fora do banco): ${rejectedUrls.length}`);
+    printTop(reasons, 10);
+    console.log(`  entram no banco: ${validItems.length}`);
+
+    if (rejectedUrls.length > 0) {
+        const removed = await removeRejectedFromActive(rejectedUrls);
+        if (removed > 0) {
+            console.log(`  ${removed} linha(s) já gravada(s) em anuncios_ativos removida(s) (modelo não reconhecido).`);
+        }
+    }
 
     if (validItems.length > 0) {
         console.log('4. Calculando médias...');
