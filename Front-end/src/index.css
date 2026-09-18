@@ -1,1 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap");
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Rubik", ui-sans-serif, system-ui, sans-serif;
+  --color-brik: #0046d8;
+  --color-brik-dark: #0033a3;
+  --color-ink: #0b1b4d;
+  --color-paper: #f3f5fb;
+  --color-gain: #0a7d43;
+  --color-gain-bg: #e3f6ec;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-brik);
+  outline-offset: 2px;
+}
+
+@keyframes star-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35) rotate(-12deg); }
+  100% { transform: scale(1); }
+}
+
+@keyframes shimmer {
+  to { background-position-x: -200%; }
+}
+
+.star-pop { animation: star-pop 0.35s ease-out; }
+
+.skeleton {
+  background: linear-gradient(100deg, #e6e9f2 30%, #f3f5fb 50%, #e6e9f2 70%) 0 0 / 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-pop, .skeleton { animation: none; }
+}
