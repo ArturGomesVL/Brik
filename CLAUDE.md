@@ -1,8 +1,23 @@
 # Brik
 
 ## Visão geral
+O que faz o brik: O brik é um aplicativo que inicialmente  vai ser um site web, mas que posteriormente vai ser um app mobile. A proposta principal do Brick é: vamos fazer um scrap de produtos do OLX e vamos exibir para o nosso usuário produtos que estão abaixo da média para eles comprarem e utilizarem, ou para consumo próprio ou para revenda.
 
-Monitoramento de ofertas de marketplaces do mercado de usados
+# STACKS DO BRIK
+
+Frontend
+├── React
+├── React Router
+├── Zustand
+
+BD 
+├── Supabase Postgres
+
+BACKEND
+├── Node.js
+├── TypeScript
+├── Next.js
+└── API REST
 
 ## Regras de desenvolvimento
 

@@ -35,6 +35,26 @@ const PYTHON_TIMEOUT_MS = Number(process.env.PYTHON_TIMEOUT_MS) || 30 * 60 * 100
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 const BATCH_SIZE = 25;
 
+// Faixa de preço absurdo por categoria — abaixo/acima disso, descarta
+// antes de gastar classificação de IA. Não é sobre achar preço "ruim"
+// (isso é a oportunidade que o app existe pra achar), é sobre preço
+// IMPOSSÍVEL pra um aparelho funcional de verdade (ex: iPhone por R$1 —
+// bug de parsing, anúncio-isca, item roubado ou pra peça).
+const FAIXA_PRECO_PLAUSIVEL = {
+    iphone: { min: 150, max: 15000 },
+    videogame_console: { min: 80, max: 8000 },
+};
+
+// Depois de classificado (já sabemos variant+condition), compara com a
+// mediana do MESMO segmento (mesma fonte do opportunity_level) — pega o
+// que a faixa absoluta acima não pega: um preço implausível pro MODELO
+// específico, não pra categoria inteira (ex: iPhone 11 usado pelo preço
+// de um iPhone novo topo de linha). Só entra em ação com amostras
+// suficientes (mesmo mínimo do opportunity_level); antes disso, a faixa
+// absoluta é a única proteção.
+const DESCONTO_MAX_PLAUSIVEL = 0.85; // > 85% abaixo da mediana do segmento → descarta
+const ACIMA_MAX_PLAUSIVEL = 2.5;     // > 2,5x a mediana do segmento → descarta
+
 // Antes de apagar um anúncio por 3 strikes, o worker confirma direto no
 // OLX se ele saiu mesmo do ar (a raspagem perde anúncio ativo por
 // re-ranqueamento/hiccup, não só por venda). STRIKE_VERIFY=false volta ao
@@ -160,6 +180,29 @@ function bestImageFromSrcset(srcset) {
     return entries.length ? entries[entries.length - 1] : null;
 }
 
+// Canonicaliza a URL do anúncio pelo ID numérico (6+ dígitos no fim do
+// path). O OLX regenera o slug da URL sempre que o vendedor edita o
+// título do anúncio — inclusive quando o preço vem embutido no título
+// (ex: "iphone-11-128gb-1-250-00" -> "...-1-150-00" depois de um ajuste
+// de preço) — mesmo ID, URL "nova". Sem canonicalizar, cada edição de
+// título cria uma linha duplicada em anuncios_ativos e a linha antiga
+// fica com o preço/strikes congelados pra sempre (a antiga nunca é
+// vista de novo com essa URL, então nunca é atualizada nem apagada —
+// o probeOlxAd do passo de strikes confirma que o ID está ativo e só
+// zera o strike, sem corrigir o preço). Mesma lógica que já existia no
+// pageFunction do Apify, agora aplicada aqui porque o Apify foi
+// removido e o scraper Python (app.py) não normaliza o href.
+function normalizeUrl(url) {
+    try {
+        const u = new URL(url);
+        const idMatch = u.pathname.match(/(\d{6,})(?:\.html?)?\/?$/i);
+        if (idMatch) return `https://www.olx.com.br/vi/${idMatch[1]}`;
+        return `https://www.olx.com.br${u.pathname.replace(/\/+$/, '')}`;
+    } catch (e) {
+        return url;
+    }
+}
+
 // ------------------------------------------------------------------
 // Passo 2 — Validar o JSON do scraper (array não vazio + campos
 // obrigatórios) e mapear os campos do app.py (Titulo, Preco, Local,
@@ -181,14 +224,22 @@ function mapAndValidateScraperOutput(payload) {
 
     const items = [];
     let descartados = 0;
+    let descartadosPrecoImplausivel = 0;
+    const faixa = FAIXA_PRECO_PLAUSIVEL[category];
 
     for (const raw of anuncios) {
         const title = (raw.Titulo || '').trim();
-        const url = raw.Link;
+        const url = raw.Link ? normalizeUrl(raw.Link) : raw.Link;
         const price = raw.Preco;
 
         if (!title || !url || typeof price !== 'number' || !(price > 0)) {
             descartados++;
+            continue;
+        }
+
+        if (faixa && (price < faixa.min || price > faixa.max)) {
+            descartadosPrecoImplausivel++;
+            console.warn(`[scraper] Descartado por preço implausível (R$ ${price}, faixa ${faixa.min}-${faixa.max}): ${url}`);
             continue;
         }
 
@@ -203,6 +254,9 @@ function mapAndValidateScraperOutput(payload) {
 
     if (descartados > 0) {
         console.warn(`[scraper] ${descartados} anúncio(s) descartado(s): título, link ou preço inválido/ausente.`);
+    }
+    if (descartadosPrecoImplausivel > 0) {
+        console.warn(`[scraper] ${descartadosPrecoImplausivel} anúncio(s) descartado(s) por preço fora da faixa plausível.`);
     }
     if (items.length === 0) {
         throw new Error('Nenhum anúncio com título/link/preço válidos após a validação.');
@@ -550,8 +604,40 @@ async function processValidItems(validItems, category, mediaMap) {
         const isNew = existing === undefined;
         const priceChanged = !isNew && Number(existing.price) !== Number(item.price);
 
+        // Informa quando o vendedor mudou o preço do anúncio entre raspagens.
+        // O upsert sempre grava o preço mais recente (item.price), que é
+        // o comportamento correto — o banco deve refletir o preço atual do OLX.
+        if (priceChanged) {
+            console.log(
+                `[PREÇO ATUALIZADO] ${item.url}\n` +
+                `  anterior: R$ ${existing.price}\n` +
+                `  atual   : R$ ${item.price}`
+            );
+        }
+
         const mediaKey = `${item.category}|${item.variant}|${item.condition}`;
-        const opportunityLevel = calcularOpportunityLevel(item.price, mediaMap.get(mediaKey));
+        const mediaRow = mediaMap.get(mediaKey);
+
+        // Preço implausível pro segmento (variant+condition) específico —
+        // não é uma "oportunidade extraordinária" de verdade, é preço
+        // impossível pra aquele modelo (ex: iPhone 11 usado pelo preço de
+        // um topo de linha novo, ou um preço tão baixo que nenhum vendedor
+        // real pediria). Só entra em ação com amostras suficientes no
+        // segmento (mesmo mínimo do opportunity_level); não rejeita o
+        // desconto genuíno de 10-30% que é a razão do app existir.
+        if (mediaRow && mediaRow.amostras >= 3 && mediaRow.preco_mediano != null) {
+            const referencia = Number(mediaRow.preco_mediano);
+            const razao = priceNum / referencia;
+            if (razao < (1 - DESCONTO_MAX_PLAUSIVEL) || razao > ACIMA_MAX_PLAUSIVEL) {
+                console.warn(
+                    `  Item descartado (preço implausível pro segmento ${mediaKey}: ` +
+                    `R$ ${priceNum} vs. mediana R$ ${referencia.toFixed(2)}): ${item.url}`
+                );
+                continue;
+            }
+        }
+
+        const opportunityLevel = calcularOpportunityLevel(item.price, mediaRow);
 
         const anuncioRow = {
             url: item.url,

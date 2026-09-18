@@ -33,7 +33,7 @@ BUSCA        = 'iphone'    # Use %20 para espaços
 ESTADO       = 'pe'        # sigla do estado
 CATEGORIA    = 'celulares' # 'celulares' ou 'games'
 CONDICAO     = 'usado'     # 'novo', 'usado' ou 'defeito'
-PAGINAS      = 10          # quantas páginas raspar (None = só a 1ª)
+PAGINAS      = 100    # quantas páginas raspar (None = só a 1ª)
 
 # Pasta onde cada JSON de execução é salvo.
 # Usa o diretório do próprio script para funcionar corretamente
@@ -204,35 +204,67 @@ class SemMaisResultados(Exception):
     pass
 
 
-def extrair_total_anuncios(driver) -> Optional[int]:
+
+def descobrir_ultima_pagina(driver) -> Optional[int]:
     """
-    Lê o contador de total de anúncios da busca (div TotalOfAds) e devolve
-    como int. Usado para parar a paginação exatamente onde os resultados
-    acabam, já que o OLX às vezes não mostra a div "sem resultados" e
-    simplesmente devolve anúncios fora do filtro quando a página pedida
-    não existe mais.
+    Descobre o número da última página disponível na busca do OLX.
+
+    Estratégia 1 (mais confiável): procura o <a> cujo texto visível é
+    "Última página" — independente do hash da classe CSS.
+
+    Estratégia 2 (fallback): varre todos os <a> da página que contenham
+    o parâmetro ?o= no href e retorna o maior número encontrado.
     """
-    elementos = driver.find_elements(By.XPATH, "//div[contains(@class,'TotalOfAds')]//p")
-    if not elementos:
-        return None
-    # Texto no formato "1 - 50 de 201 resultados" - queremos só o número depois do "de".
-    match = re.search(r'de\s+([\d.]+)', elementos[0].text, re.IGNORECASE)
-    if not match:
-        return None
-    digitos = match.group(1).replace('.', '')
-    return int(digitos) if digitos.isdigit() else None
+    try:
+        # Aguarda ao menos um link de paginação aparecer
+        wait = WebDriverWait(driver, 20)
+        wait.until(EC.presence_of_element_located(
+            (By.XPATH, "//a[contains(@href,'?o=') or contains(@href,'&o=')]")
+        ))
+        sleep(0.5)  # pequena margem para todos os links renderizarem
+
+        # ── Estratégia 1: link com texto "Última página" ──────────────────────
+        candidatos = driver.find_elements(
+            By.XPATH, "//a[contains(translate(text(),'ÚÁÉÍÓ','uaeio'),'ltima p')]"
+        )
+        logger.info(f'[paginação] Estratégia 1: {len(candidatos)} candidato(s) encontrado(s) para "Última página"')
+        for c in candidatos:
+            logger.info(f'  texto="{c.text}" href="{c.get_attribute("href")}"')
+
+        if candidatos:
+            href = candidatos[-1].get_attribute('href') or ''
+            m = re.search(r'[?&]o=(\d+)', href)
+            if m:
+                logger.info(f'Última página detectada pelo botão "Última página": o={m.group(1)}')
+                return int(m.group(1))
+
+        # ── Estratégia 2: maior valor de ?o= entre todos os links da página ──
+        todos_links = driver.find_elements(By.TAG_NAME, 'a')
+        numeros = []
+        for a in todos_links:
+            href = a.get_attribute('href') or ''
+            m = re.search(r'[?&]o=(\d+)', href)
+            if m:
+                numeros.append(int(m.group(1)))
+        logger.info(f'[paginação] Estratégia 2: valores de ?o= encontrados: {sorted(set(numeros))}')
+        if numeros:
+            ultima = max(numeros)
+            logger.info(f'Última página detectada pelo maior o= nos links: {ultima}')
+            return ultima
+
+    except Exception as e:
+        logger.warning(f'Não foi possível descobrir a última página: {e}')
+    return None
 
 
-def raspar_pagina(driver, condicao: str) -> tuple[list[dict], Optional[int]]:
-    """Extrai todos os anúncios da página atual e o total de anúncios da busca."""
+def raspar_pagina(driver, condicao: str) -> list[dict]:
+    """Extrai todos os anúncios da página atual."""
     if driver.find_elements(By.XPATH, "//div[contains(@class,'AdNotFound')]"):
         raise SemMaisResultados()
 
     wait = WebDriverWait(driver, 30)
     wait.until(EC.presence_of_element_located((By.XPATH, "//a[@class='olx-adcard__link']")))
     sleep(random.uniform(1, 2))  # pequena pausa para JS terminar de renderizar
-
-    total_anuncios = extrair_total_anuncios(driver)
 
     titulos = driver.find_elements(By.XPATH, "//h2[contains(@class,'olx-adcard__title')]")
     precos  = driver.find_elements(By.XPATH, "//h3[contains(@class,'olx-adcard__price')]")
@@ -255,10 +287,10 @@ def raspar_pagina(driver, condicao: str) -> tuple[list[dict], Optional[int]]:
             'Condicao':  condicao,
         }
         anuncios.append(anuncio)
-    return anuncios, total_anuncios
+    return anuncios
 
 
-def raspar_pagina_com_retry(driver, url: str, condicao: str) -> Optional[tuple[list[dict], Optional[int]]]:
+def raspar_pagina_com_retry(driver, url: str, condicao: str) -> Optional[list[dict]]:
     """Carrega a URL e extrai os anúncios, com retry e backoff progressivo em caso de falha."""
     esperas = [0] + BACKOFF_SEGUNDOS  # 1ª tentativa não espera nada antes
     total_tentativas = len(esperas)
@@ -319,18 +351,37 @@ def main():
     driver = criar_driver(headless=HEADLESS, usar_proxy=USAR_PROXY)
     todos_anuncios = []
     falhas_consecutivas = 0
-    total_anuncios_busca = None
 
     categoria = CATEGORIAS[CATEGORIA]
     condicao_qs = '&'.join(f'{categoria["key"]}={numero}' for numero in CONDICOES[CONDICAO])
 
-    paginas = PAGINAS if PAGINAS else 1
-    logger.info(f'Iniciando: busca="{BUSCA}" categoria={CATEGORIA} condicao={CONDICAO} paginas={paginas}')
+    paginas_limite = PAGINAS if PAGINAS else 1
+
+    # ── Descobre a última página acessando a página 1 ──────────────────────────
+    url_pagina1 = f'https://www.olx.com.br/{categoria["slug"]}/estado-{ESTADO}?q={BUSCA}&{condicao_qs}&o=1'
+    logger.info(f'Acessando página 1 para descobrir a última página: {url_pagina1}')
+    driver.get(url_pagina1)
+    ultima_pagina = descobrir_ultima_pagina(driver)
+
+    if ultima_pagina is None:
+        logger.warning('Não foi possível detectar a última página via paginação. Usando página 1 como ponto de partida.')
+        ultima_pagina = 1
+
+    # Respeita o limite configurado em PAGINAS
+    pagina_inicio = ultima_pagina
+    pagina_fim    = max(1, ultima_pagina - paginas_limite + 1)
+    paginas_total = pagina_inicio - pagina_fim + 1
+
+    logger.info(
+        f'Iniciando: busca="{BUSCA}" categoria={CATEGORIA} condicao={CONDICAO} '
+        f'ultima_pagina={ultima_pagina} raspando {paginas_total} pagina(s) '
+        f'({pagina_inicio} -> {pagina_fim})'
+    )
 
     try:
-        for pagina in range(1, paginas + 1):
+        for pagina in range(pagina_inicio, pagina_fim - 1, -1):  # última → primeira
             url = f'https://www.olx.com.br/{categoria["slug"]}/estado-{ESTADO}?q={BUSCA}&{condicao_qs}&o={pagina}'
-            logger.info(f'[Pagina {pagina}/{paginas}] {url}')
+            logger.info(f'[Pagina {pagina} | restam {pagina - pagina_fim} depois desta] {url}')
 
             try:
                 resultado = raspar_pagina_com_retry(driver, url, CONDICAO)
@@ -347,9 +398,7 @@ def main():
                     break
                 continue
 
-            anuncios, total_pagina = resultado
-            if total_pagina is not None:
-                total_anuncios_busca = total_pagina
+            anuncios = resultado
 
             falhas_consecutivas = 0
             todos_anuncios.extend(anuncios)
@@ -357,12 +406,7 @@ def main():
             for a in anuncios[:3]:
                 logger.info(f'  -> {a["Titulo"]} | {a["Preco_Raw"]} | {a["Local"]} | {a["Data"]}')
 
-            if total_anuncios_busca is not None and len(todos_anuncios) >= total_anuncios_busca:
-                logger.info(f'Total de {total_anuncios_busca} anúncios da busca já raspados '
-                             f'(contador do OLX) - encerrando antes de sair do range real.')
-                break
-
-            if pagina < paginas:
+            if pagina > pagina_fim:
                 sleep(random.uniform(2, 5))  # delay humano entre páginas
     finally:
         driver.quit()
