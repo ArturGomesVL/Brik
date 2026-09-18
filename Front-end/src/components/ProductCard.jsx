@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { GamepadIcon, PhoneIcon, StarIcon } from './icons.jsx'
+import { GamepadIcon, PhoneIcon, PinIcon, StarIcon } from './icons.jsx'
 
 const LEVELS = {
   boa: { label: 'Bom negócio', className: 'bg-orange-500' },
@@ -19,7 +19,9 @@ function ProductCard({ item }) {
 
   const level = LEVELS[item.opportunity_level]
   const FallbackIcon = CATEGORY_ICONS[item.category] ?? PhoneIcon
-  const hasMarket = item.market_price != null
+  // location_neighborhood já vem como "Cidade, Bairro"; location_city é fixo no worker.
+  const location = item.location_neighborhood || item.location_city
+  const hasMarket =item.market_price != null
   const profit = hasMarket ? item.market_price - item.price : null
   const profitPct = hasMarket ? Math.round((profit / item.price) * 100) : null
 
@@ -45,7 +47,15 @@ function ProductCard({ item }) {
         </div>
 
         <div className="flex flex-1 flex-col gap-2.5 p-3 pb-14">
-          <h2 className="line-clamp-2 min-h-[2.5em] text-[13px] font-medium leading-tight">{item.title}</h2>
+          <div>
+            <h2 className="line-clamp-2 min-h-[2.5em] text-[13px] font-medium leading-tight">{item.title}</h2>
+            {location && (
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-ink/60">
+                <PinIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{location}</span>
+              </p>
+            )}
+          </div>
 
           <dl className="grid grid-cols-2 gap-2 text-[11px] leading-tight text-ink/60">
             <div>
