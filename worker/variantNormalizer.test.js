@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { canonicalizeVariant } = require('./variantNormalizer');
+const { canonicalizeVariant, variantMatchesTitle } = require('./variantNormalizer');
+const { alignClassifications, sameTitle } = require('./classificationAlignment');
 
 const canon = (variant, category = 'iphone') => canonicalizeVariant(category, variant).variant;
 const reason = (variant, category = 'iphone') => canonicalizeVariant(category, variant).reason;
@@ -104,4 +105,75 @@ test('outras categorias: só rejeita não identificado', () => {
     assert.equal(canon('ps5-slim', 'videogame_console'), 'ps5-slim');
     assert.equal(canon('videogame_console-nao-identificado', 'videogame_console'), null);
     assert.equal(canon(null, 'videogame_console'), null);
+});
+
+const bate = (titulo, variant) => variantMatchesTitle('iphone', titulo, variant);
+
+test('variant que não descreve o aparelho do título é reprovado (casos reais do banco)', () => {
+    assert.equal(bate('iPhone 13 Pro Max 128gb', 'iphone-17-pro-max-256gb'), false);
+    assert.equal(bate('iPhone 13 128gb', 'iphone-15-128gb'), false);
+    assert.equal(bate('iPhone 11 64gb', 'iphone-13-pro-max-128gb'), false);
+    assert.equal(bate('Vendo Iphone SE 2020', 'iphone-15-pro-128gb'), false);
+    assert.equal(bate('iPhone 12', 'iphone-xs-max-64gb'), false);
+    assert.equal(bate('iPhone XR 132GB', 'iphone-11-pro-max-64gb'), false);
+});
+
+test('variant correto passa, inclusive grafias esquisitas de título', () => {
+    assert.equal(bate('iPhone 13 Pro Max 128gb', 'iphone-13-pro-max-128gb'), true);
+    assert.equal(bate('Xsmax', 'iphone-xs-max-64gb'), true);
+    assert.equal(bate('iPhone 16 E, 256gb na garantia Apple', 'iphone-16e-256gb'), true);
+    assert.equal(bate('IPHONE 12PRO MAX - IMPECÁVEL', 'iphone-12-pro-max-128gb'), true);
+    assert.equal(bate('iPhone SE 2 (2020) 64GB Barato', 'iphone-se-2020-64gb'), true);
+    assert.equal(bate('iPhone X 64gb', 'iphone-x-64gb'), true);
+    assert.equal(bate('iPhone 17 Air 256gb', 'iphone-air-256gb'), true);
+    assert.equal(bate('Iphone 8plus 64', 'iphone-8-plus-64gb'), true);
+});
+
+test('sufixo pro/max/plus/mini precisa concordar nos dois sentidos', () => {
+    assert.equal(bate('iPhone 11', 'iphone-11-pro'), false);
+    assert.equal(bate('iPhone 13 Pro Max', 'iphone-13-pro'), false);
+    assert.equal(bate('iPhone 13 Pro', 'iphone-13-pro-max'), false);
+    assert.equal(bate('iPhone 14 Plus 128gb', 'iphone-14-128gb'), false);
+});
+
+test('capacidade: "5G" não conta, e título sem capacidade nunca reprova', () => {
+    assert.equal(bate('iPhone 12 5G azul', 'iphone-12-128gb'), true);
+    assert.equal(bate('iPhone 12 64GB', 'iphone-12-128gb'), false);
+    assert.equal(bate('iPhone 12', 'iphone-12-128gb'), true);
+    assert.equal(bate('iPhone 15 Pro Max 1tb', 'iphone-15-pro-max-1tb'), true);
+});
+
+test('outras categorias e variant vazio não são checados', () => {
+    assert.equal(variantMatchesTitle('videogame_console', 'PS5', 'ps4-slim'), true);
+    assert.equal(bate('iPhone novíssimo', null), true);
+});
+
+test('lista da IA deslocada em uma posição: casa pelo título ecoado, não pelo index', () => {
+    const itens = [{ title: 'iPhone 11 64GB' }, { title: 'iPhone 13 128gb' }, { title: 'iPhone 15 Pro' }];
+    const deslocada = [
+        { index: 1, titulo: 'iPhone 11 64GB', variant: 'iphone-11-64gb' },
+        { index: 2, titulo: 'iPhone 13 128gb', variant: 'iphone-13-128gb' },
+        { index: 3, titulo: 'iPhone 15 Pro', variant: 'iphone-15-pro-128gb' },
+    ];
+    const r = alignClassifications(itens, deslocada);
+    assert.deepEqual(r.map((c) => c.variant), ['iphone-11-64gb', 'iphone-13-128gb', 'iphone-15-pro-128gb']);
+});
+
+test('item sem classificação com título correspondente fica null (não é chutado)', () => {
+    const itens = [{ title: 'iPhone 11 64GB' }, { title: 'iPhone 13 128gb' }];
+    const r = alignClassifications(itens, [{ index: 0, titulo: 'iPhone 11 64GB', variant: 'iphone-11-64gb' }]);
+    assert.equal(r[0].variant, 'iphone-11-64gb');
+    assert.equal(r[1], null);
+    assert.equal(alignClassifications(itens, null)[0], null);
+});
+
+test('títulos repetidos consomem uma classificação cada; cópia com pequenas diferenças ainda casa', () => {
+    const itens = [{ title: 'iPhone 11 64GB' }, { title: 'iPhone 11 64GB' }];
+    const r = alignClassifications(itens, [
+        { index: 0, titulo: 'iPhone 11 64GB', variant: 'a' },
+        { index: 1, titulo: 'iPhone 11 64GB', variant: 'b' },
+    ]);
+    assert.deepEqual(r.map((c) => c.variant), ['a', 'b']);
+    assert.equal(sameTitle('iPhone 11 64GB - Bateria 90% 🔋', 'iphone 11 64gb bateria 90'), true);
+    assert.equal(sameTitle('iPhone 11 64GB', 'iPhone 13 128GB'), false);
 });

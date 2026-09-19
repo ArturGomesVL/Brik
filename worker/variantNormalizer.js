@@ -177,4 +177,90 @@ function canonicalizeVariant(category, variant) {
     return { variant };
 }
 
-module.exports = { canonicalizeVariant };
+// ------------------------------------------------------------------
+// Confere se o variant devolvido pela IA descreve o MESMO aparelho do título.
+// Rede de segurança contra classificação trocada de anúncio (ex: título
+// "iPhone 13 Pro Max 128gb" com variant "iphone-17-pro-max-256gb"): o modelo,
+// o sufixo (pro/max/plus/mini) e a capacidade citados no título têm que bater
+// com o variant. Só olha o que o título de fato diz — título que não cita
+// capacidade, por exemplo, nunca reprova.
+// ------------------------------------------------------------------
+function normalizeTitle(title) {
+    return String(title || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+const REAL_STORAGES_GB = new Set([8, 16, 32, 64, 128, 256, 512, 1024, 2048]);
+
+// "5G" (rede) e "6gb de RAM" não são capacidade: só valem tamanhos reais.
+function titleStorages(t) {
+    const found = new Set();
+    for (const m of t.matchAll(/(?<![0-9])(\d{1,4})\s?(gb|g|tb)(?![a-z])/g)) {
+        const n = parseInt(m[1], 10);
+        const gb = m[2] === 'tb' ? n * 1024 : n;
+        if (REAL_STORAGES_GB.has(gb)) found.add(gb);
+    }
+    return found;
+}
+
+function variantStorage(variant) {
+    // "-ou-mais" é um grupo de capacidades, não uma capacidade específica.
+    const m = /-(\d+)(gb|tb)$/.exec(variant);
+    if (!m) return null;
+    return m[2] === 'tb' ? parseInt(m[1], 10) * 1024 : parseInt(m[1], 10);
+}
+
+function iphoneVariantMatchesTitle(title, variant) {
+    const v = String(variant || '').toLowerCase();
+    const m = /^iphone-(se|air|xs|xr|x|\d{1,2})(?![0-9])/.exec(v);
+    if (!m) return true; // sem modelo legível: quem rejeita é a canonicalização
+    const t = normalizeTitle(title);
+
+    const model = m[1];
+    let modelo;
+    if (/^\d/.test(model)) modelo = new RegExp(`(?<![0-9])${model}(?![0-9])`).test(t);
+    else if (model === 'xs' || model === 'xr') modelo = new RegExp(`(?<![a-z])${model}`).test(t);
+    else if (model === 'x') modelo = /(?<![a-z])x(?![a-z])/.test(t) || /iphone\s*x(?![a-z])/.test(t);
+    else modelo = new RegExp(`(?<![a-z])${model}(?![a-z])`).test(t); // se, air
+    if (!modelo) return false;
+
+    // Sufixos (pro/max/plus/mini). Variant tem o sufixo -> o título precisa
+    // citá-lo em algum lugar ("ProMax" e "p max" contam). Título tem o sufixo
+    // COLADO ao número do modelo ("13 Pro Max") -> o variant precisa tê-lo;
+    // sufixo solto no título ("carcaça 17 pro") é outro aparelho, não vale.
+    const noTitulo = {
+        max: /(?<![a-z])max(?![a-z])|promax|xsmax|(?<![a-z])p\s?max/,
+        pro: /(?<![a-z])pro(?![a-z])|[0-9]pro|promax|(?<![a-z])p\s?max/,
+        plus: /(?<![a-z])plus(?![a-z])|[0-9]plus/,
+        mini: /(?<![a-z])mini(?![a-z])|[0-9]mini/,
+    };
+    // "iphone-xs-max" traz o "max" no nome; só conta sufixo depois do modelo.
+    const resto = v.replace(/^iphone-/, '').split('-').slice(1).join('-');
+    const noVariant = (s) => new RegExp(`(^|-)${s}(-|$)`).test(resto);
+
+    for (const s of Object.keys(noTitulo)) {
+        if (noVariant(s) && !noTitulo[s].test(t)) return false;
+    }
+
+    const colado = new RegExp(
+        `(?<![0-9a-z])${model}\\s?(pro\\s?max|promax|p\\s?max|pro|plus|mini|max)(?![a-z])`
+    ).exec(t);
+    if (colado) {
+        const palavra = colado[1].replace(/\s/g, '');
+        const esperados = palavra === 'promax' || palavra === 'pmax' ? ['pro', 'max'] : [palavra];
+        if (esperados.some((s) => !noVariant(s))) return false;
+    }
+
+    // Capacidade: se o título cita e o variant também, precisam concordar.
+    const cap = variantStorage(v);
+    const capsTitulo = titleStorages(t);
+    if (cap !== null && capsTitulo.size > 0 && !capsTitulo.has(cap)) return false;
+
+    return true;
+}
+
+function variantMatchesTitle(category, title, variant) {
+    if (category !== 'iphone' || !variant) return true;
+    return iphoneVariantMatchesTitle(title, variant);
+}
+
+module.exports = { canonicalizeVariant, variantMatchesTitle };

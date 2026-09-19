@@ -17,7 +17,8 @@ const { execFile, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const { canonicalizeVariant } = require('./variantNormalizer');
+const { canonicalizeVariant, variantMatchesTitle } = require('./variantNormalizer');
+const { alignClassifications } = require('./classificationAlignment');
 
 // ------------------------------------------------------------------
 // Configuração — tudo via variáveis de ambiente, nunca hardcoded
@@ -63,8 +64,8 @@ const ACIMA_MAX_PLAUSIVEL = 2.5;     // > 2,5x a mediana do segmento → descart
 const VERIFY_STRIKES_ON_OLX = process.env.STRIKE_VERIFY !== 'false';
 const OLX_PROBE_CONCURRENCY = 3;
 const OLX_PROBE_TIMEOUT_MS = 15000;
-// Acima disso, provável raspagem quebrada (não venda em massa) — nem
-// verifica nem aplica strike neste ciclo.
+// Máximo de verificações no OLX por ciclo; o excedente é verificado nos
+// ciclos seguintes (raspagem quebrada é barrada pela trava de cobertura).
 const OLX_PROBE_MAX = 250;
 const BROWSER_UA =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -304,13 +305,22 @@ async function splitCachedAndNew(items) {
     const cached = [];
     const toClassify = [];
 
+    let invalidadas = 0;
     for (const item of items) {
         const hit = cacheMap.get(item.url);
-        if (hit) {
+        // Entrada de cache gravada por uma classificação trocada (variant que não
+        // descreve o título) é refeita em vez de reaproveitada pra sempre.
+        if (hit && hit.category_match === true && !variantMatchesTitle(hit.category, item.title, hit.variant)) {
+            invalidadas++;
+            toClassify.push(item);
+        } else if (hit) {
             cached.push({ ...item, ...hit });
         } else {
             toClassify.push(item);
         }
+    }
+    if (invalidadas > 0) {
+        console.warn(`   ${invalidadas} entrada(s) do cache não batem com o título — serão reclassificadas.`);
     }
 
     return { cached, toClassify };
@@ -380,8 +390,9 @@ alguma sobre a condição, classifique como "usado".
 
 
 
-Para CADA título numerado na lista, responda com um objeto JSON contendo:
-- "index": o número do item (mesmo da lista)
+Devolva UM objeto para CADA título da lista, na mesma ordem, sem pular nenhum. Cada objeto contém:
+- "index": o número do item (mesmo da lista, começando em 0)
+- "titulo": o título do item COPIADO exatamente como veio na lista (sem o número). É obrigatório: serve pra conferir que a resposta pertence a este anúncio
 - "categoryMatch": true se o anúncio é realmente o produto principal da categoria (não acessório, peça, capa, jogo avulso, serviço, ou produto diferente que só menciona o termo buscado); false caso contrário
 - "variant": uma string curta e padronizada identificando o modelo/variante específico (ex: "iphone-11-pro-max-256gb", "ps5-slim"), ou null se categoryMatch for false ou não for possível identificar com confiança
 - "condition": "novo" ou "usado" (nunca null quando categoryMatch for true)
@@ -397,7 +408,7 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
         },
         body: JSON.stringify({
             model: HAIKU_MODEL,
-            max_tokens: 2000,
+            max_tokens: 4096,
             system: systemPrompt,
             messages: [{ role: 'user', content: listForPrompt }],
         }),
@@ -422,8 +433,29 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
         throw new Error(`Falha ao parsear resposta do Claude: ${err.message}\nResposta bruta: ${rawText}`);
     }
 
-    return items.map((item, i) => {
-        const c = classifications.find((x) => x.index === i) || {};
+    // Casa pelo título ecoado (não só pelo index): já houve execução em que a IA
+    // devolveu a lista deslocada em uma posição e cada anúncio ficou com o
+    // variant do título seguinte.
+    const aligned = alignClassifications(items, classifications);
+    const realinhados = aligned.filter((c, i) => c && c.index !== i).length;
+    if (realinhados > 0) {
+        console.warn(`  ⚠ IA devolveu ${realinhados} item(ns) fora da posição — realinhados pelo título.`);
+    }
+    const semResposta = aligned.filter((c) => !c).length;
+    if (semResposta > 0) {
+        console.warn(`  ⚠ ${semResposta} item(ns) sem resposta correspondente da IA — ficam pra próxima execução.`);
+    }
+    let divergentes = 0;
+
+    const result = items.map((item, i) => {
+        let c = aligned[i] || {};
+
+        // Rede de segurança: o variant tem que descrever o aparelho do título.
+        if (c.categoryMatch === true && !variantMatchesTitle(category, item.title, c.variant)) {
+            divergentes++;
+            console.warn(`  ⚠ variant não bate com o título, descartado: "${item.title}" -> ${c.variant}`);
+            c = {};
+        }
 
         const categoryMatch = c.categoryMatch ?? null;
 
@@ -446,6 +478,11 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
             condition,
         };
     });
+
+    if (divergentes > 0) {
+        console.warn(`  ${divergentes} classificação(ões) descartada(s) neste lote (não vão pro cache nem pro banco).`);
+    }
+    return result;
 }
 
 async function classifyAllNew(items, category) {
@@ -760,17 +797,55 @@ async function probeMany(rows) {
 // a 3, antes de apagar (hard delete), o worker confirma no OLX que o
 // anúncio realmente saiu do ar — anúncio ainda ativo volta a strikes=0.
 // ------------------------------------------------------------------
-async function handleStrikes(category, currentUrls) {
-    const { data: activeRows, error: fetchError } = await supabase
-        .from('anuncios_ativos')
-        .select('url, strikes')
-        .eq('category', category);
+// O Supabase devolve no máximo 1000 linhas por consulta: sem paginar, o
+// passo de strikes só enxergava as primeiras 1000 do banco e o resto nunca
+// levava strike (anúncio vendido ficava "ativo" pra sempre).
+async function fetchAllActiveRows(category, pageSize = 1000) {
+    const rows = [];
+    for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+            .from('anuncios_ativos')
+            .select('url, strikes')
+            .eq('category', category)
+            .order('id')
+            .range(from, from + pageSize - 1);
 
-    if (fetchError) throw new Error(`Erro ao consultar anuncios_ativos p/ strikes: ${fetchError.message}`);
+        if (error) throw new Error(`Erro ao consultar anuncios_ativos p/ strikes: ${error.message}`);
+        rows.push(...data);
+        if (data.length < pageSize) break;
+    }
+    return rows;
+}
+
+async function deleteActiveByUrl(urls, chunkSize = 40) {
+    for (let i = 0; i < urls.length; i += chunkSize) {
+        const { error } = await supabase
+            .from('anuncios_ativos')
+            .delete()
+            .in('url', urls.slice(i, i + chunkSize));
+
+        if (error) throw new Error(`Erro ao deletar de anuncios_ativos: ${error.message}`);
+    }
+}
+
+async function handleStrikes(category, currentUrls) {
+    const activeList = await fetchAllActiveRows(category);
 
     const currentSet = new Set(currentUrls);
-    const activeList = activeRows || [];
-    const missing = activeList.filter((row) => !currentSet.has(row.url));
+    let missing = activeList.filter((row) => !currentSet.has(row.url));
+
+    // Linha "ausente" pela URL, mas cujo anúncio (mesmo ID) foi visto agora sob
+    // outra URL, é duplicata superada (ex: linha de URL antiga + linha /vi/<id>).
+    // Não adianta dar strike: a sondagem no OLX a confirmaria ativa e ela
+    // ficaria congelada com preço velho. Apaga direto.
+    const currentIds = new Set(currentUrls.map(extractAdId).filter(Boolean));
+    const superseded = missing.filter((row) => currentIds.has(extractAdId(row.url)));
+    if (superseded.length > 0) {
+        await deleteActiveByUrl(superseded.map((row) => row.url));
+        const removidas = new Set(superseded.map((row) => row.url));
+        missing = missing.filter((row) => !removidas.has(row.url));
+        console.log(`   ${superseded.length} linha(s) duplicada(s) removida(s) (mesmo anúncio já visto sob outra URL).`);
+    }
 
     // Trava de segurança contra raspagem incompleta: se esta run enxergou
     // muito menos anúncios do que temos ativos no banco (bloqueio do OLX,
@@ -804,19 +879,22 @@ async function handleStrikes(category, currentUrls) {
     let aliveCount = 0;
     let inconclusiveCount = 0;
 
-    if (gateCandidates.length > OLX_PROBE_MAX) {
-        console.warn(
-            `   ⚠ ${gateCandidates.length} anúncios atingiriam 3 strikes (> ${OLX_PROBE_MAX}): ` +
-            `provável raspagem quebrada, não venda. Nada apagado neste ciclo.`
-        );
-    } else if (gateCandidates.length === 0) {
+    if (gateCandidates.length === 0) {
         // nada a verificar
     } else if (!VERIFY_STRIKES_ON_OLX) {
         gateCandidates.forEach((row) => toDelete.push(row.url));
     } else {
-        console.log(`   Verificando ${gateCandidates.length} candidato(s) a exclusão direto no OLX...`);
-        const verdicts = await probeMany(gateCandidates);
-        for (const row of gateCandidates) {
+        // Orçamento de verificações por ciclo (cada uma é uma ida ao OLX). O que
+        // passar disso fica em strikes=2 e é verificado nos próximos ciclos —
+        // nada é apagado sem confirmação, então não precisa travar tudo.
+        const toProbe = gateCandidates.slice(0, OLX_PROBE_MAX);
+        const adiados = gateCandidates.length - toProbe.length;
+        console.log(
+            `   Verificando ${toProbe.length} candidato(s) a exclusão direto no OLX` +
+            (adiados > 0 ? ` (${adiados} ficam pro próximo ciclo)` : '') + '...'
+        );
+        const verdicts = await probeMany(toProbe);
+        for (const row of toProbe) {
             const verdict = verdicts.get(row.url);
             if (verdict === 'gone') {
                 toDelete.push(row.url);
@@ -830,33 +908,33 @@ async function handleStrikes(category, currentUrls) {
         }
     }
 
-    for (const update of toUpdate) {
-        const { error } = await supabase
-            .from('anuncios_ativos')
-            .update({ strikes: update.strikes })
-            .eq('url', update.url);
+    // Uma atualização por valor de strike (em lotes), não uma por linha.
+    const porStrike = new Map();
+    for (const { url, strikes } of toUpdate) {
+        if (!porStrike.has(strikes)) porStrike.set(strikes, []);
+        porStrike.get(strikes).push(url);
+    }
+    const UPDATE_CHUNK = 40;
+    for (const [strikes, urls] of porStrike) {
+        for (let i = 0; i < urls.length; i += UPDATE_CHUNK) {
+            const { error } = await supabase
+                .from('anuncios_ativos')
+                .update({ strikes })
+                .in('url', urls.slice(i, i + UPDATE_CHUNK));
 
-        if (error) throw new Error(`Erro ao atualizar strikes (${update.url}): ${error.message}`);
+            if (error) throw new Error(`Erro ao atualizar strikes (${strikes}): ${error.message}`);
+        }
     }
 
-    const CHUNK_SIZE = 40;
-    for (let i = 0; i < toDelete.length; i += CHUNK_SIZE) {
-        const chunk = toDelete.slice(i, i + CHUNK_SIZE);
-        const { error } = await supabase
-            .from('anuncios_ativos')
-            .delete()
-            .in('url', chunk);
-
-        if (error) throw new Error(`Erro ao deletar anúncios com 3 strikes: ${error.message}`);
-    }
+    await deleteActiveByUrl(toDelete);
 
     console.log(
         `   Strikes: ${missing.length} ausentes | ${toDelete.length} removidos (confirmados fora do ar) | ` +
         `${aliveCount} ainda ativos (strike zerado) | ${inconclusiveCount} inconclusivos (adiado).`
     );
     if (toDelete.length > 0) {
-        console.log('   Removidos:');
-        toDelete.forEach((url) => console.log(`     ${url}`));
+        console.log(`   Removidos (${toDelete.length}), primeiros 20:`);
+        toDelete.slice(0, 20).forEach((url) => console.log(`     ${url}`));
     }
 }
 
@@ -972,12 +1050,16 @@ async function run() {
     }
 }
 
-run()
-    .then(() => console.log('\nWorker finalizado.'))
-    .catch((err) => {
-        console.error('\nErro no worker:', err);
-        if (err.cause) {
-            console.error('Causa raiz:', err.cause);
-        }
-        process.exit(1);
-    });
+if (require.main === module) {
+    run()
+        .then(() => console.log('\nWorker finalizado.'))
+        .catch((err) => {
+            console.error('\nErro no worker:', err);
+            if (err.cause) {
+                console.error('Causa raiz:', err.cause);
+            }
+            process.exit(1);
+        });
+}
+
+module.exports = { classifyBatch, fetchAllActiveRows, extractAdId };
