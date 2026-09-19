@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { GamepadIcon, PhoneIcon, PinIcon, StarIcon } from './icons.jsx'
 
 const LEVELS = {
@@ -27,7 +26,13 @@ function ProductCard({ item }) {
 
   return (
     <article className="relative flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_6px_18px_-6px_rgba(11,27,77,0.25)] ring-1 ring-ink/5">
-      <Link to={`/produto/${item.id}`} className="flex flex-1 flex-col">
+      <a
+        href={item.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Ver anúncio na OLX"
+        className="flex flex-1 flex-col"
+      >
         <div className="relative aspect-[4/3] w-full overflow-hidden bg-brik/5">
           {item.image_url && !imageFailed ? (
             <img
@@ -79,7 +84,7 @@ function ProductCard({ item }) {
             <p className="rounded-lg bg-paper px-2.5 py-1.5 text-[11px] text-ink/60">Lucro ainda sem média de mercado</p>
           )}
         </div>
-      </Link>
+      </a>
 
       <div className="absolute bottom-3 left-3 right-12 flex items-center gap-2">
         {level && (
