@@ -19,6 +19,15 @@ const fs = require('fs');
 const path = require('path');
 const { canonicalizeVariant, variantMatchesTitle } = require('./variantNormalizer');
 const { alignClassifications } = require('./classificationAlignment');
+const {
+    PRODUTOS,
+    rotulo,
+    parseArgs,
+    selectProdutos,
+    scraperArgs,
+    parseResultPath,
+    createStrikeTracker,
+} = require('./produtos');
 
 // ------------------------------------------------------------------
 // Configuração — tudo via variáveis de ambiente, nunca hardcoded
@@ -72,12 +81,10 @@ const BROWSER_UA =
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 
-// O app.py define BUSCA/CATEGORIA/CONDICAO internamente (editado à mão
-// antes de cada execução — não recebe argumentos do worker) e devolve a
-// categoria OLX (slug) dentro do próprio JSON gerado. Este mapa traduz o
+// Cada produto de PRODUTOS (produtos.js) vira uma execução do app.py, que
+// devolve a categoria OLX (slug) dentro do JSON gerado. Este mapa traduz o
 // slug do OLX pra categoria interna usada no resto do pipeline
-// (classificação + upsert), evitando manter uma lista de buscas separada
-// no Node que podia ficar desincronizada do que o script realmente raspou.
+// (classificação + upsert + strikes).
 const CATEGORIA_OLX_PARA_INTERNA = {
     celulares: 'iphone',
     games: 'videogame_console',
@@ -95,18 +102,25 @@ const CATEGORIA_OLX_PARA_INTERNA = {
 // "scrapping python\app.py") funciona sem escaping manual e sem risco de
 // injeção de comando.
 // ------------------------------------------------------------------
-async function runPythonScraper() {
+async function runPythonScraper(produto, { headless = false } = {}) {
     if (!PYTHON_SCRIPT_PATH) {
         throw new Error('PYTHON_SCRIPT_PATH não está definido. Configure o caminho do app.py no .env.');
     }
 
     const scriptDir = path.dirname(PYTHON_SCRIPT_PATH);
     const startedAt = Date.now();
+    const args = [PYTHON_SCRIPT_PATH, ...scraperArgs(produto, { headless })];
 
-    console.log(`[scraper] Iniciando: ${PYTHON_EXECUTABLE} "${PYTHON_SCRIPT_PATH}"`);
+    console.log(`[scraper] Iniciando: ${PYTHON_EXECUTABLE} ${args.map((a) => `"${a}"`).join(' ')}`);
 
+    let stdoutText = '';
     await new Promise((resolve, reject) => {
-        const child = spawn(PYTHON_EXECUTABLE, [PYTHON_SCRIPT_PATH], { cwd: scriptDir });
+        // UTF-8 explícito: no Windows o Python usa cp1252 quando a saída vai pra pipe
+        // e o log (acentos) e o caminho do JSON saem corrompidos.
+        const child = spawn(PYTHON_EXECUTABLE, args, {
+            cwd: scriptDir,
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        });
         let timedOut = false;
 
         const timer = setTimeout(() => {
@@ -115,7 +129,10 @@ async function runPythonScraper() {
             child.kill();
         }, PYTHON_TIMEOUT_MS);
 
-        child.stdout.on('data', (chunk) => process.stdout.write(`[scraper] ${chunk}`));
+        child.stdout.on('data', (chunk) => {
+            stdoutText += chunk;
+            process.stdout.write(`[scraper] ${chunk}`);
+        });
         child.stderr.on('data', (chunk) => process.stderr.write(`[scraper] ${chunk}`));
 
         child.on('error', (err) => {
@@ -137,7 +154,10 @@ async function runPythonScraper() {
 
     console.log('[scraper] Processo Python finalizado. Procurando JSON gerado...');
 
-    const jsonFile = findLatestJsonFile(scriptDir, startedAt);
+    // O app.py anuncia o arquivo que gerou; o "JSON mais recente" fica só de
+    // reserva (com vários produtos em sequência, adivinhar seria arriscado).
+    const anunciado = parseResultPath(stdoutText);
+    const jsonFile = anunciado && fs.existsSync(anunciado) ? anunciado : findLatestJsonFile(scriptDir, startedAt);
     if (!jsonFile) {
         throw new Error(`Nenhum arquivo .json encontrado em "${scriptDir}" criado durante esta execução.`);
     }
@@ -264,7 +284,15 @@ function mapAndValidateScraperOutput(payload) {
         throw new Error('Nenhum anúncio com título/link/preço válidos após a validação.');
     }
 
-    return { category, items };
+    // Tudo que apareceu na raspagem está vivo, mesmo o que foi descartado acima
+    // (preço fora da faixa, título vazio, classificação que falhou...): essas URLs
+    // valem como "visto" pro strike, senão um anúncio ativo com dado ruim num
+    // ciclo levaria strike.
+    const seenUrls = [...new Set(
+        anuncios.map((raw) => (raw.Link ? normalizeUrl(raw.Link) : null)).filter(Boolean)
+    )];
+
+    return { category, items, seenUrls };
 }
 
 // ------------------------------------------------------------------
@@ -994,12 +1022,10 @@ async function removeRejectedFromActive(urls, chunkSize = 40) {
 // ------------------------------------------------------------------
 // Execução principal
 // ------------------------------------------------------------------
-async function run() {
-    console.log('1. Rodando script Python de raspagem...');
-    const payload = await runPythonScraper();
-    const { category, items: rawItemsRaw } = mapAndValidateScraperOutput(payload);
-    console.log(`   ${rawItemsRaw.length} itens válidos raspados (categoria: ${category}).`);
-
+// Processa UM produto já raspado: cache → Haiku → regras de variant → médias →
+// anuncios_ativos/historico_precos. NÃO trata strikes: isso é feito no fim do
+// ciclo, por categoria (ver run()).
+async function processProduct(category, rawItemsRaw) {
     // Deduplica por url — proteção extra contra duplicatas na raspagem
     // (ex: mesmo anúncio patrocinado repetido entre páginas).
     const rawItemsMap = new Map();
@@ -1043,11 +1069,83 @@ async function run() {
         const mediaMap = await getMediaCache(validItems);
 
         console.log('5. Gravando em anuncios_ativos e historico_precos...');
-        const processedUrls = await processValidItems(validItems, category, mediaMap);
-
-        console.log('6. Tratando strikes...');
-        await handleStrikes(category, processedUrls);
+        await processValidItems(validItems, category, mediaMap);
     }
+
+    return { total: rawItems.length, gravados: validItems.length };
+}
+
+// Ciclo completo: raspa e grava cada produto de PRODUTOS em sequência — quando
+// um termina, o próximo já começa — e só no fim aplica os strikes.
+//
+// Uso: node worker.js [busca ...] [--paginas N] [--dry-run] [--headless]
+//   node worker.js                 -> todos os produtos
+//   node worker.js iphone          -> só o iPhone (categoria inteira: aplica strikes nela)
+//   node worker.js ps5 xbox        -> só esses; strike só nas categorias 100% raspadas (aqui, nenhuma)
+//   node worker.js --paginas 1     -> teste rápido; raspagem parcial nunca aplica strikes
+//   node worker.js --dry-run       -> só raspa e valida; não usa Haiku nem grava no banco
+async function run() {
+    const opts = parseArgs(process.argv.slice(2));
+    const headless = opts.headless || process.env.SCRAPER_HEADLESS === 'true';
+    const { selecionados, parcial } = selectProdutos(PRODUTOS, opts);
+    const categoriaDe = (p) => CATEGORIA_OLX_PARA_INTERNA[p.categoria];
+    const tracker = createStrikeTracker(PRODUTOS, categoriaDe);
+    const resumo = [];
+
+    console.log(
+        `Ciclo com ${selecionados.length} produto(s): ${selecionados.map((p) => p.busca).join(', ')}` +
+        `${opts.dryRun ? ' [DRY-RUN]' : ''}${parcial ? ' [--paginas: raspagem parcial, sem strikes]' : ''}`
+    );
+
+    for (const [i, produto] of selecionados.entries()) {
+        const nome = rotulo(produto);
+        console.log(`\n=== [${i + 1}/${selecionados.length}] ${nome} ===`);
+
+        try {
+            console.log('1. Rodando script Python de raspagem...');
+            const payload = await runPythonScraper(produto, { headless });
+            const { category, items, seenUrls } = mapAndValidateScraperOutput(payload);
+            // JSON de versão antiga do scraper não tem o campo: assume completo.
+            const completo = payload.completo !== false;
+            console.log(
+                `   ${items.length} itens válidos raspados (categoria: ${category}, ` +
+                `${payload.paginas_raspadas ?? '?'}/${payload.paginas_planejadas ?? '?'} páginas, ` +
+                `completo=${completo}).`
+            );
+            tracker.record(produto, category, seenUrls, completo);
+
+            if (opts.dryRun) {
+                resumo.push({ nome, ok: true, detalhe: `${items.length} itens (dry-run)`, completo });
+                continue;
+            }
+
+            const r = await processProduct(category, items);
+            resumo.push({ nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo });
+        } catch (err) {
+            // Um produto com problema não derruba os outros; a categoria dele
+            // fica sem strike neste ciclo, pois a raspagem dela ficou incompleta.
+            console.error(`\nFalha no produto "${nome}":`, err.message);
+            if (err.cause) console.error('Causa raiz:', err.cause);
+            tracker.fail(produto, err.message);
+            resumo.push({ nome, ok: false, detalhe: err.message });
+        }
+    }
+
+    if (!opts.dryRun) {
+        console.log('\n6. Tratando strikes (por categoria, com tudo que foi visto no ciclo)...');
+        const { prontas, puladas } = tracker.resolve({ parcial });
+        for (const { category, urls } of prontas) {
+            console.log(`   Categoria ${category}: ${urls.length} anúncios vistos no ciclo.`);
+            await handleStrikes(category, urls);
+        }
+        for (const { category, motivo } of puladas) {
+            console.warn(`   ⚠ Strikes PULADOS (${category}): ${motivo}.`);
+        }
+    }
+
+    console.log('\nResumo do ciclo:');
+    resumo.forEach((r) => console.log(`  ${r.ok ? 'OK    ' : 'FALHOU'} ${r.nome} — ${r.detalhe}${r.ok && r.completo === false ? ' [raspagem incompleta]' : ''}`));
+    if (resumo.some((r) => !r.ok)) process.exitCode = 1;
 }
 
 if (require.main === module) {

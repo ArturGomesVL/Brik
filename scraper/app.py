@@ -7,6 +7,7 @@ Hardened para rodar sem supervisão em VPS: bloqueio de imagens/CSS,
 proxy autenticado, retry com backoff, tolerância a falha por página,
 output em JSON e logging estruturado.
 """
+import argparse
 import datetime
 import json
 import logging
@@ -57,6 +58,9 @@ BACKOFF_SEGUNDOS = [5, 15]
 # Aborta a execução inteira se este número de páginas seguidas falhar
 # (mesmo depois de esgotar os retries de cada uma).
 MAX_FALHAS_CONSECUTIVAS = 3
+
+# Quantos anúncios o OLX mostra numa página cheia (usado só pra desconfiar de raspagem parcial).
+ANUNCIOS_PAGINA_CHEIA = 40
 
 # Slug da categoria na URL do OLX + nome do parâmetro de condição (varia por categoria)
 CATEGORIAS = {
@@ -329,7 +333,7 @@ def gerar_nome_arquivo() -> str:
     return '-'.join(partes) + '.json'
 
 
-def salvar_json(anuncios: list[dict], arquivo: str):
+def salvar_json(anuncios: list[dict], arquivo: str, resumo: Optional[dict] = None):
     """Salva os anúncios em JSON, com metadados da execução para facilitar o consumo no pipeline."""
     payload = {
         'gerado_em': datetime.datetime.now().isoformat(),
@@ -338,6 +342,7 @@ def salvar_json(anuncios: list[dict], arquivo: str):
         'categoria': CATEGORIA,
         'condicao': CONDICAO,
         'total': len(anuncios),
+        **(resumo or {}),
         'anuncios': anuncios,
     }
     with open(arquivo, 'w', encoding='utf-8') as f:
@@ -351,6 +356,9 @@ def main():
     driver = criar_driver(headless=HEADLESS, usar_proxy=USAR_PROXY)
     todos_anuncios = []
     falhas_consecutivas = 0
+    paginas_ok = 0
+    paginas_falhas = 0
+    interrompida = False  # parou antes de percorrer todas as páginas planejadas
 
     categoria = CATEGORIAS[CATEGORIA]
     condicao_qs = '&'.join(f'{categoria["key"]}={numero}' for numero in CONDICOES[CONDICAO])
@@ -362,6 +370,7 @@ def main():
     logger.info(f'Acessando página 1 para descobrir a última página: {url_pagina1}')
     driver.get(url_pagina1)
     ultima_pagina = descobrir_ultima_pagina(driver)
+    paginacao_detectada = ultima_pagina is not None
 
     if ultima_pagina is None:
         logger.warning('Não foi possível detectar a última página via paginação. Usando página 1 como ponto de partida.')
@@ -387,20 +396,27 @@ def main():
                 resultado = raspar_pagina_com_retry(driver, url, CONDICAO)
             except SemMaisResultados:
                 logger.info(f'Fim da paginação detectado na página {pagina} (sem mais anúncios) - encerrando.')
+                # Raspando da última pra primeira: "sem resultados" com páginas ainda por vir
+                # significa que as de menor número ficaram sem ser raspadas.
+                if pagina > pagina_fim:
+                    interrompida = True
                 break
 
             if resultado is None:
                 falhas_consecutivas += 1
+                paginas_falhas += 1
                 logger.error(f'Página {pagina} falhou após esgotar as tentativas '
                              f'(falhas consecutivas: {falhas_consecutivas}/{MAX_FALHAS_CONSECUTIVAS})')
                 if falhas_consecutivas >= MAX_FALHAS_CONSECUTIVAS:
                     logger.critical(f'{MAX_FALHAS_CONSECUTIVAS} falhas consecutivas - abortando execução.')
+                    interrompida = True
                     break
                 continue
 
             anuncios = resultado
 
             falhas_consecutivas = 0
+            paginas_ok += 1
             todos_anuncios.extend(anuncios)
             logger.info(f'OK: {len(anuncios)} anuncios encontrados na pagina {pagina}')
             for a in anuncios[:3]:
@@ -411,11 +427,53 @@ def main():
     finally:
         driver.quit()
 
+    # Sem paginação detectada e com uma página "cheia" (~50 anúncios), provavelmente
+    # existem mais páginas que não foram vistas: não dá pra garantir a raspagem.
+    paginacao_incerta = not paginacao_detectada and len(todos_anuncios) >= ANUNCIOS_PAGINA_CHEIA
+
+    # "completo" = a raspagem viu TODOS os anúncios da busca. O worker só aplica strike
+    # (anúncio sumiu) em cima de raspagem completa; parcial daria strike em anúncio vivo.
+    resumo = {
+        'paginas_planejadas': paginas_total,
+        'paginas_raspadas': paginas_ok,
+        'paginas_falhas': paginas_falhas,
+        'completo': paginas_falhas == 0 and not interrompida and not paginacao_incerta,
+    }
+
     Path(PASTA_SAIDA).mkdir(parents=True, exist_ok=True)
     caminho_arquivo = str(Path(PASTA_SAIDA) / gerar_nome_arquivo())
-    salvar_json(todos_anuncios, caminho_arquivo)
-    logger.info(f'Total: {len(todos_anuncios)} anuncios salvos em "{caminho_arquivo}"')
+    salvar_json(todos_anuncios, caminho_arquivo, resumo)
+    logger.info(f'Total: {len(todos_anuncios)} anuncios salvos em "{caminho_arquivo}" '
+                f'(completo={resumo["completo"]}, paginas {paginas_ok}/{paginas_total}, falhas {paginas_falhas})')
+
+    # Linha que o worker lê pra achar o arquivo (em vez de adivinhar "o JSON mais recente").
+    print(f'RESULTADO_JSON={caminho_arquivo}', flush=True)
+
+
+def ler_argumentos() -> argparse.Namespace:
+    """Permite ao worker escolher o produto de cada execução. Sem argumentos, usa as constantes do topo."""
+    p = argparse.ArgumentParser(description='Raspador do OLX (Selenium)')
+    p.add_argument('--busca', help='termo de busca; use %%20 para espaços')
+    p.add_argument('--estado', help='sigla do estado, ex: pe')
+    p.add_argument('--categoria', choices=list(CATEGORIAS), help='categoria do OLX')
+    p.add_argument('--condicao', choices=list(CONDICOES), help='condição do produto')
+    p.add_argument('--paginas', type=int, help='quantas páginas raspar')
+    p.add_argument('--headless', action='store_true', help='roda sem abrir janela')
+    return p.parse_args()
 
 
 if __name__ == '__main__':
+    _args = ler_argumentos()
+    if _args.busca is not None:
+        BUSCA = _args.busca
+    if _args.estado is not None:
+        ESTADO = _args.estado
+    if _args.categoria is not None:
+        CATEGORIA = _args.categoria
+    if _args.condicao is not None:
+        CONDICAO = _args.condicao
+    if _args.paginas is not None:
+        PAGINAS = _args.paginas
+    if _args.headless:
+        HEADLESS = True
     main()
