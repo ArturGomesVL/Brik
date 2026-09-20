@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOpportunitiesStore } from '../stores/useOpportunitiesStore'
+import BrandHeader from '../components/BrandHeader.jsx'
 import ProductCard, { ProductCardSkeleton } from '../components/ProductCard.jsx'
 import { PhoneIcon, GamepadIcon, SearchIcon } from '../components/icons.jsx'
 
@@ -37,12 +38,8 @@ function Home() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-white pb-10 shadow-xl">
-      <header className="rounded-b-[2rem] bg-brik px-5 pb-6 pt-6">
-        <div className="mb-5 flex items-center ">
-          <img src="/logoBrik.png" alt="Brik" className="h-9 w-auto" />
-        </div>
-
+    <div className="mx-auto min-h-screen w-full max-w-md bg-white pb-28 shadow-xl">
+      <BrandHeader>
         <label className="flex items-center gap-3 rounded-full bg-white px-5 py-3 shadow-[0_8px_20px_-8px_rgba(0,0,0,0.5)] focus-within:ring-4 focus-within:ring-white/40">
           <SearchIcon className="h-5 w-5 shrink-0 text-brik" />
           <span className="sr-only">Procurar oferta de brique</span>
@@ -54,7 +51,7 @@ function Home() {
             className="w-full bg-transparent text-sm outline-none placeholder:text-ink/40"
           />
         </label>
-      </header>
+      </BrandHeader>
 
       <nav className="flex justify-center gap-10 px-4 pb-2 pt-5" aria-label="Categorias">
         {CATEGORIES.map(({ value, label, Icon }) => {

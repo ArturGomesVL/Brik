@@ -9,6 +9,17 @@
   --color-paper: #f3f5fb;
   --color-gain: #0a7d43;
   --color-gain-bg: #e3f6ec;
+
+  /* Dashboard (tema escuro). Textos e marcas de dados usam estes tokens. */
+  --color-night: #0c0c0d;
+  --color-night-card: #161617;
+  --color-night-raise: #212124;
+  --color-night-line: #29292c;
+  --color-night-mute: #8d8d95;
+  --color-signal: #4f7df0;
+  --color-up: #34d399;
+  --color-down: #f87171;
+  --color-warn: #f5a524;
 }
 
 body {
@@ -40,4 +51,164 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .star-pop, .skeleton { animation: none; }
+}
+
+/* Liquid Glass (navbar). O WebKit só aceita funções CSS em backdrop-filter
+   (sem filtros SVG), então a "lente" é blur + saturação + realces especulares. */
+.glass-bar {
+  /* Vidro transparente: quase sem cor própria — o que se vê é a página atrás,
+     desfocada e um pouco mais escura, com um aro fino de luz na borda. */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.07));
+  -webkit-backdrop-filter: blur(24px) saturate(180%) brightness(0.82);
+  backdrop-filter: blur(24px) saturate(180%) brightness(0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0.5px rgba(255, 255, 255, 0.1);
+}
+
+/* As duas pílulas da navbar (altura 76px) têm a ponta de dentro "escavada" por um
+   círculo concêntrico ao botão "+" (raio 49px). As pontas ficam a 31px do centro do
+   "+", de modo que os cantos da pílula caem exatamente sobre o círculo e formam as
+   pontas do desenho. A máscara também recorta o backdrop-filter. */
+.pill-left {
+  border-radius: 38px 8px 8px 38px;
+}
+
+.pill-right {
+  border-radius: 8px 38px 38px 8px;
+}
+
+.glass-bar.pill-left {
+  -webkit-mask-image: radial-gradient(circle 49px at calc(100% + 31px) 50%, transparent 48.5px, #000 49.5px);
+  mask-image: radial-gradient(circle 49px at calc(100% + 31px) 50%, transparent 48.5px, #000 49.5px);
+}
+
+.glass-bar.pill-right {
+  -webkit-mask-image: radial-gradient(circle 49px at -31px 50%, transparent 48.5px, #000 49.5px);
+  mask-image: radial-gradient(circle 49px at -31px 50%, transparent 48.5px, #000 49.5px);
+}
+
+/* Sem sombra projetada nas pílulas: a máscara cortaria a sombra da própria pílula, e
+   uma sombra em elemento à parte pintava de branco a área escavada ao lado do "+". */
+
+/* Aro de luz ao longo da curva escavada, que a máscara não desenha sozinha. */
+.glass-notch-rim {
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.06);
+}
+
+/* A bolha é vidro quase transparente: o centro fica limpo (o ícone aparece nítido)
+   e só as bordas refratam, com blur, brilho e um aro fino, como no WhatsApp.
+   O elemento em si NÃO usa backdrop-filter: quem tem backdrop-filter vira "raiz de
+   fundo" e o blur dos filhos deixaria de enxergar a barra atrás. Por isso o vidro
+   fica nos pseudo-elementos, que são irmãos e enxergam a barra e a página. */
+.glass-lens {
+  --lens-rim-rest:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 1.5px 1.5px 1px -0.5px rgba(255, 255, 255, 0.55),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.28),
+    inset 0 0 10px rgba(255, 255, 255, 0.08);
+  /* Em movimento: aro mais luminoso e denso, como a parede de uma bolha. */
+  --lens-rim-move:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.38),
+    inset 2px 2px 2px -0.5px rgba(255, 255, 255, 0.8),
+    inset -2px -2px 2px -0.5px rgba(255, 255, 255, 0.5),
+    inset 0 0 18px rgba(255, 255, 255, 0.2);
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.2),
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.14)
+  );
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.55);
+  transition: transform 0.45s cubic-bezier(0.22, 1.12, 0.36, 1);
+}
+
+/* Anel de refração: blur + brilho só nas extremidades, transparente no meio. */
+.glass-lens::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(6px) brightness(1.35) saturate(1.5);
+  backdrop-filter: blur(6px) brightness(1.35) saturate(1.5);
+  opacity: 0.6;
+  -webkit-mask-image: radial-gradient(ellipse closest-side, transparent 50%, #000 100%);
+  mask-image: radial-gradient(ellipse closest-side, transparent 50%, #000 100%);
+}
+
+/* Aro fino de luz por cima do anel, para a borda continuar nítida. */
+.glass-lens::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: var(--lens-rim-rest);
+}
+
+.glass-lens[data-pressed="true"] {
+  transform: scale(1.08);
+}
+
+/* O "+" segue o mesmo vidro: azul translúcido, não um disco sólido. */
+.glass-add {
+  background: linear-gradient(180deg, rgba(60, 120, 245, 0.62), rgba(10, 70, 200, 0.7));
+  -webkit-backdrop-filter: blur(16px) saturate(190%);
+  backdrop-filter: blur(16px) saturate(190%);
+  box-shadow:
+    inset 1.5px 1.5px 1px -0.5px rgba(255, 255, 255, 0.7),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.3),
+    0 0 0 2px rgba(255, 255, 255, 0.55),
+    0 8px 18px -6px rgba(0, 20, 80, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-lens { transition: none; }
+}
+
+/* Transição de tela: só a logo viaja (da lateral, na Home, para o centro do header
+   do Dashboard). O resto da página troca direto, sem cortina nem fade — a entrada
+   do Dashboard fica por conta das bolhas abaixo. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-group(brik-logo) {
+  animation-duration: 0.7s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Entrada progressiva do Dashboard: a interface se monta elemento por elemento.
+   Cada um traz --step (sua posição na sequência, definida em components/dashboard/
+   reveal.js) e o atraso sai de --step × --reveal-stagger. */
+:root {
+  --reveal-stagger: 62ms;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --reveal-stagger: 42ms;
+  }
+}
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+.reveal {
+  animation: reveal 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: calc(var(--step, 0) * var(--reveal-stagger));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { animation: none; }
 }
