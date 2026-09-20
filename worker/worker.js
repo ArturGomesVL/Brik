@@ -31,6 +31,7 @@ const {
     conditionFromScrape,
     withScrapeCondition,
 } = require('./produtos');
+const { defeitoNoTitulo, mantemDefeituosos, planHistory } = require('./defeito');
 
 // ------------------------------------------------------------------
 // Configuração — tudo via variáveis de ambiente, nunca hardcoded
@@ -248,6 +249,8 @@ function mapAndValidateScraperOutput(payload) {
     }
 
     const items = [];
+    const defeitoUrls = [];
+    let comDefeitoMantidos = 0;
     let descartados = 0;
     let descartadosPrecoImplausivel = 0;
     const faixa = FAIXA_PRECO_PLAUSIVEL[category];
@@ -262,6 +265,18 @@ function mapAndValidateScraperOutput(payload) {
             continue;
         }
 
+        // Título que já diz que o produto tem defeito: nas categorias que não
+        // mantêm defeituosos (consoles) não entra no banco (nem vai pro Haiku/cache:
+        // se o vendedor editar o título, o anúncio é reavaliado). Em iPhone ele segue
+        // o fluxo normal, marcado com defeito (o front mostra o aviso).
+        const defeito = defeitoNoTitulo(title);
+        if (defeito && !mantemDefeituosos(category)) {
+            defeitoUrls.push(url);
+            console.warn(`[scraper] Descartado (título com defeito: ${defeito}): "${title.slice(0, 80)}"`);
+            continue;
+        }
+        if (defeito) comDefeitoMantidos++;
+
         if (faixa && (price < faixa.min || price > faixa.max)) {
             descartadosPrecoImplausivel++;
             console.warn(`[scraper] Descartado por preço implausível (R$ ${price}, faixa ${faixa.min}-${faixa.max}): ${url}`);
@@ -274,6 +289,7 @@ function mapAndValidateScraperOutput(payload) {
             price,
             location: raw.Local || null,
             imageUrl: bestImageFromSrcset(raw.Imagem),
+            defeito_titulo: Boolean(defeito),
         });
     }
 
@@ -295,7 +311,14 @@ function mapAndValidateScraperOutput(payload) {
         anuncios.map((raw) => (raw.Link ? normalizeUrl(raw.Link) : null)).filter(Boolean)
     )];
 
-    return { category, items, seenUrls, condition: conditionFromScrape(payload.condicao) };
+    if (defeitoUrls.length > 0) {
+        console.warn(`[scraper] ${defeitoUrls.length} anúncio(s) descartado(s): título diz que o produto tem defeito.`);
+    }
+    if (comDefeitoMantidos > 0) {
+        console.log(`[scraper] ${comDefeitoMantidos} anúncio(s) com defeito no título mantido(s), marcados com aviso (${category}).`);
+    }
+
+    return { category, items, seenUrls, defeitoUrls, condition: conditionFromScrape(payload.condicao) };
 }
 
 // ------------------------------------------------------------------
@@ -306,7 +329,7 @@ async function queryWithRetry(chunk, maxRetries = 3) {
         try {
             const { data, error } = await supabase
                 .from('classificacoes_ia')
-                .select('url, category, category_match, variant, condition')
+                .select('url, category, category_match, variant, condition, defeito')
                 .in('url', chunk);
 
             if (error) throw new Error(error.message, { cause: error });
@@ -345,7 +368,10 @@ async function splitCachedAndNew(items) {
             invalidadas++;
             toClassify.push(item);
         } else if (hit) {
-            cached.push({ ...item, ...hit });
+            // "defeito" da linha de cache é o julgamento do Haiku; vira defeito_ia pra
+            // não colidir com o defeito detectado agora pelas palavras do título.
+            const { defeito: defeitoCache, ...resto } = hit;
+            cached.push({ ...item, ...resto, defeito_ia: defeitoCache === true });
         } else {
             toClassify.push(item);
         }
@@ -404,6 +430,7 @@ Devolva UM objeto para CADA título da lista, na mesma ordem, sem pular nenhum. 
 - "titulo": o título do item COPIADO exatamente como veio na lista (sem o número). É obrigatório: serve pra conferir que a resposta pertence a este anúncio
 - "categoryMatch": true se o anúncio é realmente o produto principal da categoria (não acessório, peça, capa, jogo avulso, serviço, ou produto diferente que só menciona o termo buscado); false caso contrário
 - "variant": uma string curta e padronizada identificando o modelo/variante específico (ex: "iphone-11-pro-max-256gb", "ps5-slim"), ou null se categoryMatch for false ou não for possível identificar com confiança
+- "defeito": true SOMENTE se o próprio título diz que o aparelho tem defeito, está quebrado ou trincado, não liga/não funciona (ou parte dele não funciona), é pra retirar peças/sucata, está em manutenção ou precisa de conserto; false caso contrário. Título que NEGA defeito ("sem defeito", "nunca deu problema", "funcionando 100%") é false. Arranhões/riscos leves e marcas de uso NÃO são defeito, nem acessório faltando ("sem cabo", "sem fonte", "sem controle", "sem caixa", "sem carregador"). Não presuma defeito: só vale o que o título afirma
 
 Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem markdown, sem crases.`;
 
@@ -454,9 +481,19 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
         console.warn(`  ⚠ ${semResposta} item(ns) sem resposta correspondente da IA — ficam pra próxima execução.`);
     }
     let divergentes = 0;
+    let comDefeito = 0;
 
     const result = items.map((item, i) => {
         let c = aligned[i] || {};
+
+        // Título que diz que o aparelho tem defeito não entra no banco. Fica
+        // sem cachear (category_match null), pra ser reavaliado se o título mudar.
+        const defeitoIa = c.defeito === true;
+        if (defeitoIa && !mantemDefeituosos(category)) {
+            comDefeito++;
+            console.warn(`  ⚠ IA marcou defeito no título, descartado: "${item.title.slice(0, 80)}"`);
+            return { ...item, category, category_match: null, variant: null, condition: null, descartado_defeito: true };
+        }
 
         // Rede de segurança: o variant tem que descrever o aparelho do título.
         if (c.categoryMatch === true && !variantMatchesTitle(category, item.title, c.variant)) {
@@ -482,6 +519,9 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
             category_match: categoryMatch,
             variant,
             condition: categoryMatch === true ? condition : null,
+            // Em categoria que mantém defeituosos (iPhone) o julgamento do Haiku
+            // segue junto da classificação (e vai pro cache).
+            defeito_ia: categoryMatch === true && defeitoIa,
         };
     });
 
@@ -529,6 +569,7 @@ async function saveToCache(classifiedItems) {
             category_match: item.category_match,
             variant: item.variant,
             condition: item.condition,
+            defeito: item.defeito_ia === true,
         }));
 
     // Deduplica por url — mantém a última ocorrência de cada URL,
@@ -609,7 +650,7 @@ async function selectExistingPrices(urls, chunkSize = 40) {
         const chunk = urls.slice(i, i + chunkSize);
         const { data, error } = await supabase
             .from('anuncios_ativos')
-            .select('url, price, last_price_change_at, variant, condition')
+            .select('url, price, last_price_change_at, variant, condition, defeito')
             .in('url', chunk);
 
         if (error) throw new Error(`Erro ao consultar preços existentes em anuncios_ativos: ${error.message}`);
@@ -641,6 +682,7 @@ async function processValidItems(validItems, category, mediaMap) {
     const anunciosRows = [];
     const historicoRows = [];
     const reclassified = []; // mesma URL, variant/condition novos: o histórico acompanha
+    const purgeHistoryUrls = []; // anúncio que passou a ter defeito: sai da base das médias
 
     for (const item of dedupedItems) {
         // price > 0 é exigido pelo check constraint de anuncios_ativos e
@@ -660,6 +702,13 @@ async function processValidItems(validItems, category, mediaMap) {
         if (!isNew && (existing.variant !== item.variant || existing.condition !== item.condition)) {
             reclassified.push({ url: item.url, variant: item.variant, condition: item.condition });
         }
+
+        // Defeito: palavras do título (recalculado a cada raspagem) OU julgamento
+        // do Haiku (vem do cache). Anúncio com defeito fica no banco, com aviso no
+        // front, mas não entra em historico_precos (não puxa a média de mercado).
+        const defeito = item.defeito_titulo === true || item.defeito_ia === true;
+        const historico = planHistory({ isNew, priceChanged, existingDefeito: existing && existing.defeito, defeito });
+        if (historico.purge) purgeHistoryUrls.push(item.url);
 
         // Informa quando o vendedor mudou o preço do anúncio entre raspagens.
         // O upsert sempre grava o preço mais recente (item.price), que é
@@ -707,6 +756,7 @@ async function processValidItems(validItems, category, mediaMap) {
             location_neighborhood: item.location,
             image_url: item.imageUrl,
             opportunity_level: opportunityLevel,
+            defeito,
             strikes: 0,
             last_seen_at: nowIso,
             // Coluna not null — sempre presente no payload do upsert em
@@ -715,7 +765,7 @@ async function processValidItems(validItems, category, mediaMap) {
             last_price_change_at: (isNew || priceChanged) ? nowIso : existing.last_price_change_at,
         };
 
-        if (isNew || priceChanged) {
+        if (historico.insert) {
             historicoRows.push({
                 url: item.url,
                 category,
@@ -743,6 +793,18 @@ async function processValidItems(validItems, category, mediaMap) {
             .insert(historicoRows);
 
         if (error) throw new Error(`Erro ao gravar historico_precos: ${error.message}`);
+    }
+
+    if (purgeHistoryUrls.length > 0) {
+        for (let i = 0; i < purgeHistoryUrls.length; i += 40) {
+            const { error } = await supabase
+                .from('historico_precos')
+                .delete()
+                .in('url', purgeHistoryUrls.slice(i, i + 40));
+
+            if (error) throw new Error(`Erro ao tirar anúncio com defeito de historico_precos: ${error.message}`);
+        }
+        console.log(`  ${purgeHistoryUrls.length} anúncio(s) passaram a ter defeito no título: pontos de preço tirados da base das médias.`);
     }
 
     // As médias de mercado saem de historico_precos. Se um anúncio foi
@@ -1009,7 +1071,7 @@ function printTop(counts, limit) {
 // probeOlxAd do passo de strikes o confirmaria ativo e zeraria o strike
 // pra sempre. Remove direto.
 async function removeRejectedFromActive(urls, chunkSize = 40) {
-    let removed = 0;
+    const removed = [];
     for (let i = 0; i < urls.length; i += chunkSize) {
         const chunk = urls.slice(i, i + chunkSize);
         const { data, error } = await supabase
@@ -1019,9 +1081,29 @@ async function removeRejectedFromActive(urls, chunkSize = 40) {
             .select('url');
 
         if (error) throw new Error(`Erro ao remover anúncios rejeitados de anuncios_ativos: ${error.message}`);
-        removed += data.length;
+        removed.push(...data.map((row) => row.url));
     }
     return removed;
+}
+
+// Anúncio com defeito que já estava no banco (o título mudou, ou entrou antes da
+// regra existir): sai de anuncios_ativos e leva os pontos de preço dele, que
+// não devem alimentar a média de mercado de aparelho em bom estado.
+async function dropDefectiveFromDatabase(urls, chunkSize = 40) {
+    if (urls.length === 0) return 0;
+    const removidos = await removeRejectedFromActive(urls, chunkSize);
+    for (let i = 0; i < removidos.length; i += chunkSize) {
+        const { error } = await supabase
+            .from('historico_precos')
+            .delete()
+            .in('url', removidos.slice(i, i + chunkSize));
+
+        if (error) throw new Error(`Erro ao remover histórico de anúncio com defeito: ${error.message}`);
+    }
+    if (removidos.length > 0) {
+        console.log(`  ${removidos.length} anúncio(s) com defeito que já estavam no banco foram removidos (com o histórico de preço).`);
+    }
+    return removidos.length;
 }
 
 // ------------------------------------------------------------------
@@ -1030,7 +1112,9 @@ async function removeRejectedFromActive(urls, chunkSize = 40) {
 // Processa UM produto já raspado: cache → Haiku → regras de variant → médias →
 // anuncios_ativos/historico_precos. NÃO trata strikes: isso é feito no fim do
 // ciclo, por categoria (ver run()).
-async function processProduct(category, rawItemsRaw, condition) {
+async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []) {
+    await dropDefectiveFromDatabase(defeitoUrls);
+
     // Deduplica por url — proteção extra contra duplicatas na raspagem
     // (ex: mesmo anúncio patrocinado repetido entre páginas).
     const rawItemsMap = new Map();
@@ -1046,6 +1130,7 @@ async function processProduct(category, rawItemsRaw, condition) {
     if (toClassify.length > 0) {
         console.log('3. Classificando itens novos via Claude Haiku...');
         newlyClassified = await classifyAllNew(toClassify, category, condition);
+        await dropDefectiveFromDatabase(newlyClassified.filter((i) => i.descartado_defeito).map((i) => i.url));
 
         console.log('   Gravando resultado no cache (classificacoes_ia)...');
         await saveToCache(newlyClassified);
@@ -1065,8 +1150,8 @@ async function processProduct(category, rawItemsRaw, condition) {
 
     if (rejectedUrls.length > 0) {
         const removed = await removeRejectedFromActive(rejectedUrls);
-        if (removed > 0) {
-            console.log(`  ${removed} linha(s) já gravada(s) em anuncios_ativos removida(s) (modelo não reconhecido).`);
+        if (removed.length > 0) {
+            console.log(`  ${removed.length} linha(s) já gravada(s) em anuncios_ativos removida(s) (modelo não reconhecido).`);
         }
     }
 
@@ -1110,7 +1195,7 @@ async function run() {
         try {
             console.log('1. Rodando script Python de raspagem...');
             const payload = await runPythonScraper(produto, { headless });
-            const { category, items, seenUrls, condition } = mapAndValidateScraperOutput(payload);
+            const { category, items, seenUrls, defeitoUrls, condition } = mapAndValidateScraperOutput(payload);
             // JSON de versão antiga do scraper não tem o campo: assume completo.
             const completo = payload.completo !== false;
             console.log(
@@ -1125,7 +1210,7 @@ async function run() {
                 continue;
             }
 
-            const r = await processProduct(category, items, condition);
+            const r = await processProduct(category, items, condition, defeitoUrls);
             resumo.push({ nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo });
         } catch (err) {
             // Um produto com problema não derruba os outros; a categoria dele
