@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { GamepadIcon, PhoneIcon, PinIcon, StarIcon } from './icons.jsx'
+import { GamepadIcon, PhoneIcon, PinIcon, StarIcon, WarningIcon } from './icons.jsx'
 
 const LEVELS = {
   boa: { label: 'Bom negócio', className: 'bg-orange-500' },
@@ -82,6 +82,18 @@ function ProductCard({ item }) {
             </p>
           ) : (
             <p className="rounded-lg bg-paper px-2.5 py-1.5 text-[11px] text-ink/60">Lucro ainda sem média de mercado</p>
+          )}
+
+          {item.defeito && (
+            <div role="note" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-red-700 ring-1 ring-red-200">
+              <p className="flex items-center gap-1.5 text-[11px] font-bold">
+                <WarningIcon className="h-4 w-4 shrink-0" />
+                Produto com defeito
+              </p>
+              <p className="mt-0.5 text-[10px] leading-tight text-red-700/80">
+                A média de mercado é de aparelhos sem defeito.
+              </p>
+            </div>
           )}
         </div>
       </a>

@@ -38,6 +38,13 @@ export const PinIcon = (props) => (
   </svg>
 )
 
+export const WarningIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M12 3.5 2.8 19.5a1.2 1.2 0 0 0 1 1.8h16.4a1.2 1.2 0 0 0 1-1.8L12 3.5Z" />
+    <path d="M12 10v4.2M12 17.4v.1" />
+  </svg>
+)
+
 export const StarIcon = (props) => (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
     <path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9L12 2.5Z" />
