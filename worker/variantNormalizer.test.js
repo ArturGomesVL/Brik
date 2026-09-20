@@ -101,10 +101,10 @@ test('idempotente: canonicalizar o canônico devolve ele mesmo', () => {
     }
 });
 
-test('outras categorias: só rejeita não identificado', () => {
-    assert.equal(canon('ps5-slim', 'videogame_console'), 'ps5-slim');
-    assert.equal(canon('videogame_console-nao-identificado', 'videogame_console'), null);
-    assert.equal(canon(null, 'videogame_console'), null);
+test('categorias sem regra própria: só rejeita não identificado (consoles: ver consoleCatalog.test.js)', () => {
+    assert.equal(canon('camera-x100', 'outra_categoria'), 'camera-x100');
+    assert.equal(canon('outra_categoria-nao-identificado', 'outra_categoria'), null);
+    assert.equal(canon(null, 'outra_categoria'), null);
 });
 
 const bate = (titulo, variant) => variantMatchesTitle('iphone', titulo, variant);
@@ -144,7 +144,7 @@ test('capacidade: "5G" não conta, e título sem capacidade nunca reprova', () =
 });
 
 test('outras categorias e variant vazio não são checados', () => {
-    assert.equal(variantMatchesTitle('videogame_console', 'PS5', 'ps4-slim'), true);
+    assert.equal(variantMatchesTitle('outra_categoria', 'Camera Canon', 'camera-x100'), true);
     assert.equal(bate('iPhone novíssimo', null), true);
 });
 

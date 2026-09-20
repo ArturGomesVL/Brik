@@ -14,6 +14,8 @@
 //     iphone-13-256gb, ...).
 // A função é idempotente: canonicalizar um variant já canônico devolve ele mesmo.
 
+const { canonicalizeConsole, consoleVariantMatchesTitle } = require('./consoleCatalog');
+
 const SUFIXO_OU_MAIS = 'ou-mais';
 
 // Capacidades (GB) em que cada modelo foi vendido, em ordem crescente.
@@ -173,6 +175,7 @@ function canonicalizeIphone(variant) {
 function canonicalizeVariant(category, variant) {
     if (!variant) return reject('sem-variant');
     if (category === 'iphone') return canonicalizeIphone(variant);
+    if (category === 'videogame_console') return canonicalizeConsole(variant);
     if (/nao-identificado$/.test(String(variant))) return reject('nao-identificado');
     return { variant };
 }
@@ -259,8 +262,10 @@ function iphoneVariantMatchesTitle(title, variant) {
 }
 
 function variantMatchesTitle(category, title, variant) {
-    if (category !== 'iphone' || !variant) return true;
-    return iphoneVariantMatchesTitle(title, variant);
+    if (!variant) return true;
+    if (category === 'iphone') return iphoneVariantMatchesTitle(title, variant);
+    if (category === 'videogame_console') return consoleVariantMatchesTitle(title, variant);
+    return true;
 }
 
 module.exports = { canonicalizeVariant, variantMatchesTitle };

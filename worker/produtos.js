@@ -23,6 +23,26 @@ const PRODUTOS = [
     { busca: 'xbox', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 20 },
 ];
 
+// A condição de cada anúncio vem do filtro da busca do OLX (o campo "condicao" do
+// produto), NÃO do Haiku: numa busca de usado, título com "lacrado" continua usado.
+// O banco só aceita novo/usado; "defeito" (também suportado pelo app.py) não tem
+// linha própria no banco, então é recusado em vez de gravar errado.
+const CONDICAO_PARA_BANCO = { novo: 'novo', usado: 'usado' };
+
+function conditionFromScrape(condicao) {
+    const condition = CONDICAO_PARA_BANCO[condicao];
+    if (!condition) {
+        throw new Error(`Condição "${condicao}" não suportada (o banco só aceita: ${Object.keys(CONDICAO_PARA_BANCO).join(', ')}).`);
+    }
+    return condition;
+}
+
+// Impõe a condição da busca nos itens classificados como o produto certo (vale
+// também pro que veio do cache, que pode ter guardado o palpite antigo da IA).
+function withScrapeCondition(items, condition) {
+    return items.map((item) => (item.category_match === true ? { ...item, condition } : item));
+}
+
 const produtoKey = (p) => `${p.busca}|${p.categoria}|${p.condicao}|${p.estado}`;
 const rotulo = (p) => `${decodeURIComponent(p.busca)} (${p.categoria}, ${p.condicao}, ${p.estado.toUpperCase()})`;
 
@@ -144,6 +164,8 @@ function createStrikeTracker(configurados, categoriaInterna) {
 
 module.exports = {
     PRODUTOS,
+    conditionFromScrape,
+    withScrapeCondition,
     produtoKey,
     rotulo,
     parseArgs,

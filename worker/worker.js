@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const { canonicalizeVariant, variantMatchesTitle } = require('./variantNormalizer');
 const { alignClassifications } = require('./classificationAlignment');
+const { consoleCatalogPrompt } = require('./consoleCatalog');
 const {
     PRODUTOS,
     rotulo,
@@ -27,6 +28,8 @@ const {
     scraperArgs,
     parseResultPath,
     createStrikeTracker,
+    conditionFromScrape,
+    withScrapeCondition,
 } = require('./produtos');
 
 // ------------------------------------------------------------------
@@ -292,7 +295,7 @@ function mapAndValidateScraperOutput(payload) {
         anuncios.map((raw) => (raw.Link ? normalizeUrl(raw.Link) : null)).filter(Boolean)
     )];
 
-    return { category, items, seenUrls };
+    return { category, items, seenUrls, condition: conditionFromScrape(payload.condicao) };
 }
 
 // ------------------------------------------------------------------
@@ -356,7 +359,7 @@ async function splitCachedAndNew(items) {
 // ------------------------------------------------------------------
 // Passo 3 — Classificar itens novos em lote via Claude Haiku
 // ------------------------------------------------------------------
-async function classifyBatch(items, category) {
+async function classifyBatch(items, category, condition = 'usado') {
     const listForPrompt = items
         .map((item, i) => `${i}. "${item.title}"`)
         .join('\n');
@@ -385,45 +388,22 @@ ARMAZENAMENTO: inclua SEMPRE que aparecer no título, mesmo abreviado ("128", "1
 iPhone SE: inclua o ano da geração ("iphone-se-2016", "iphone-se-2020", "iphone-se-2022");
 se o título não permitir saber a geração, devolva variant null.
 
-IMPORTANTE sobre variant (videogame/consoles): inclua APENAS modelo, edição
-(fat/slim/pro, quando aplicável) e armazenamento (quando disponível), nessa ordem.
-Cobre tanto linha PlayStation (ps2 a ps5) quanto linha Xbox (360 ao modelo mais
-recente) — trate ambas as marcas com a mesma lógica de modelo+edição+armazenamento.
-NÃO inclua se o anúncio é sobre versão "digital" ou "física" do console — isso é uma
-característica do anúncio, não uma variante de modelo, e não deve aparecer no variant.
-NÃO inclua acessórios inclusos no pacote (ex: "com 2 controles") no variant.
-Exemplos corretos (PlayStation): "ps5-slim", "ps5-slim-1tb", "ps4-pro-1tb", "ps3-slim",
-"ps2-slim", "ps2-fat".
-Exemplos corretos (Xbox): "xbox-360", "xbox-360-slim", "xbox-one", "xbox-one-s",
-"xbox-one-x-1tb", "xbox-series-s", "xbox-series-x".
-Exemplos INCORRETOS (não faça): "ps5-digital", "ps5-slim-fisico", "ps5-slim-2-controles",
-"xbox-360-arcade-com-kinect".
-Se o armazenamento não for mencionado no título, use só modelo+edição: "ps5-slim",
-"xbox-series-s". "Xbox Series X" e "Xbox Series S" são modelos diferentes (X tem mais
-armazenamento e suporta 4K nativo) — nunca junte os dois num variant genérico
-"xbox-series"; use sempre "xbox-series-x" ou "xbox-series-s" conforme o título indicar.
-Se o título disser apenas "Xbox Series" sem especificar X ou S, e não houver outra pista
-(preço, armazenamento, foto/descrição mencionando cor), classifique como categoryMatch
-false por ambiguidade, em vez de chutar entre X e S.
+IMPORTANTE sobre variant (videogame/consoles): o variant DEVE ser EXATAMENTE uma das chaves
+do catálogo abaixo (escreva só a chave, sem mais nada) ou null. NUNCA invente uma chave fora
+da lista.
+${consoleCatalogPrompt()}
 
-IMPORTANTE sobre condition: este é um mercado de produtos usados — a ausência de
-sinal claro de "novo" já é, por si só, evidência de que o produto é usado. Frases
-como "com nota fiscal", "com caixa", ou "muito novo" NÃO são evidência confiável de
-que o produto é novo — vendedores de produtos usados usam essas frases o tempo todo
-pra transmitir confiança/conservação, não para indicar que nunca foi usado. Só
-classifique como "novo" quando houver sinal inequívoco e específico de que o produto
-nunca foi usado, como "lacrado", "lacrado de fábrica", "na caixa, nunca aberto",
-"zero km", "sem uso". Em qualquer outro caso, incluindo quando não houver pista
-alguma sobre a condição, classifique como "usado".
+Não inclua acessórios, jogos, controles nem itens do pacote no variant. Se o anúncio for
+acessório, jogo, peça ou serviço, categoryMatch é false.
 
-
+NÃO classifique a condição (novo/usado) do aparelho: ela já é definida pela busca. Ignore
+palavras como "lacrado", "novo", "seminovo" ou "com nota fiscal" ao decidir o variant.
 
 Devolva UM objeto para CADA título da lista, na mesma ordem, sem pular nenhum. Cada objeto contém:
 - "index": o número do item (mesmo da lista, começando em 0)
 - "titulo": o título do item COPIADO exatamente como veio na lista (sem o número). É obrigatório: serve pra conferir que a resposta pertence a este anúncio
 - "categoryMatch": true se o anúncio é realmente o produto principal da categoria (não acessório, peça, capa, jogo avulso, serviço, ou produto diferente que só menciona o termo buscado); false caso contrário
 - "variant": uma string curta e padronizada identificando o modelo/variante específico (ex: "iphone-11-pro-max-256gb", "ps5-slim"), ou null se categoryMatch for false ou não for possível identificar com confiança
-- "condition": "novo" ou "usado" (nunca null quando categoryMatch for true)
 
 Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem markdown, sem crases.`;
 
@@ -494,16 +474,14 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
             ? (c.variant || `${category}-nao-identificado`)
             : (c.variant ?? null);
 
-        const condition = categoryMatch === true
-            ? (c.condition || 'usado')
-            : (c.condition ?? null);
-
+        // A condição NÃO vem da IA: quem define é o filtro da busca do OLX
+        // (usado/novo). Numa busca de usado, "lacrado" no título não vira "novo".
         return {
             ...item,
             category,
             category_match: categoryMatch,
             variant,
-            condition,
+            condition: categoryMatch === true ? condition : null,
         };
     });
 
@@ -513,7 +491,7 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
     return result;
 }
 
-async function classifyAllNew(items, category) {
+async function classifyAllNew(items, category, condition) {
     const results = [];
 
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
@@ -521,7 +499,7 @@ async function classifyAllNew(items, category) {
         console.log(`  Classificando lote ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} itens)...`);
 
         try {
-            const classified = await classifyBatch(batch, category);
+            const classified = await classifyBatch(batch, category, condition);
             results.push(...classified);
         } catch (err) {
             console.error(`  Erro no lote ${Math.floor(i / BATCH_SIZE) + 1}:`, err.message);
@@ -631,7 +609,7 @@ async function selectExistingPrices(urls, chunkSize = 40) {
         const chunk = urls.slice(i, i + chunkSize);
         const { data, error } = await supabase
             .from('anuncios_ativos')
-            .select('url, price, last_price_change_at')
+            .select('url, price, last_price_change_at, variant, condition')
             .in('url', chunk);
 
         if (error) throw new Error(`Erro ao consultar preços existentes em anuncios_ativos: ${error.message}`);
@@ -662,6 +640,7 @@ async function processValidItems(validItems, category, mediaMap) {
     const nowIso = new Date().toISOString();
     const anunciosRows = [];
     const historicoRows = [];
+    const reclassified = []; // mesma URL, variant/condition novos: o histórico acompanha
 
     for (const item of dedupedItems) {
         // price > 0 é exigido pelo check constraint de anuncios_ativos e
@@ -678,6 +657,9 @@ async function processValidItems(validItems, category, mediaMap) {
         const existing = existingMap.get(item.url);
         const isNew = existing === undefined;
         const priceChanged = !isNew && Number(existing.price) !== Number(item.price);
+        if (!isNew && (existing.variant !== item.variant || existing.condition !== item.condition)) {
+            reclassified.push({ url: item.url, variant: item.variant, condition: item.condition });
+        }
 
         // Informa quando o vendedor mudou o preço do anúncio entre raspagens.
         // O upsert sempre grava o preço mais recente (item.price), que é
@@ -761,6 +743,29 @@ async function processValidItems(validItems, category, mediaMap) {
             .insert(historicoRows);
 
         if (error) throw new Error(`Erro ao gravar historico_precos: ${error.message}`);
+    }
+
+    // As médias de mercado saem de historico_precos. Se um anúncio foi
+    // reclassificado (IA melhorada, regra nova de variant), os pontos antigos dele
+    // ficariam no segmento errado e as médias misturadas: leva junto.
+    if (reclassified.length > 0) {
+        const grupos = new Map();
+        for (const { url, variant, condition } of reclassified) {
+            const chave = `${variant}\u0000${condition}`;
+            if (!grupos.has(chave)) grupos.set(chave, { variant, condition, urls: [] });
+            grupos.get(chave).urls.push(url);
+        }
+        for (const { variant, condition, urls } of grupos.values()) {
+            for (let i = 0; i < urls.length; i += 40) {
+                const { error } = await supabase
+                    .from('historico_precos')
+                    .update({ variant, condition })
+                    .in('url', urls.slice(i, i + 40));
+
+                if (error) throw new Error(`Erro ao acompanhar reclassificação em historico_precos: ${error.message}`);
+            }
+        }
+        console.log(`  ${reclassified.length} anúncio(s) reclassificado(s): histórico de preços acompanhou a nova variante.`);
     }
 
     return dedupedItems.map((item) => item.url);
@@ -1025,7 +1030,7 @@ async function removeRejectedFromActive(urls, chunkSize = 40) {
 // Processa UM produto já raspado: cache → Haiku → regras de variant → médias →
 // anuncios_ativos/historico_precos. NÃO trata strikes: isso é feito no fim do
 // ciclo, por categoria (ver run()).
-async function processProduct(category, rawItemsRaw) {
+async function processProduct(category, rawItemsRaw, condition) {
     // Deduplica por url — proteção extra contra duplicatas na raspagem
     // (ex: mesmo anúncio patrocinado repetido entre páginas).
     const rawItemsMap = new Map();
@@ -1033,13 +1038,14 @@ async function processProduct(category, rawItemsRaw) {
     const rawItems = Array.from(rawItemsMap.values());
 
     console.log('2. Consultando cache de classificação...');
-    const { cached, toClassify } = await splitCachedAndNew(rawItems);
+    const { cached: cachedRaw, toClassify } = await splitCachedAndNew(rawItems);
+    const cached = withScrapeCondition(cachedRaw, condition);
     console.log(`   ${cached.length} já em cache, ${toClassify.length} novos a classificar.`);
 
     let newlyClassified = [];
     if (toClassify.length > 0) {
         console.log('3. Classificando itens novos via Claude Haiku...');
-        newlyClassified = await classifyAllNew(toClassify, category);
+        newlyClassified = await classifyAllNew(toClassify, category, condition);
 
         console.log('   Gravando resultado no cache (classificacoes_ia)...');
         await saveToCache(newlyClassified);
@@ -1104,7 +1110,7 @@ async function run() {
         try {
             console.log('1. Rodando script Python de raspagem...');
             const payload = await runPythonScraper(produto, { headless });
-            const { category, items, seenUrls } = mapAndValidateScraperOutput(payload);
+            const { category, items, seenUrls, condition } = mapAndValidateScraperOutput(payload);
             // JSON de versão antiga do scraper não tem o campo: assume completo.
             const completo = payload.completo !== false;
             console.log(
@@ -1119,7 +1125,7 @@ async function run() {
                 continue;
             }
 
-            const r = await processProduct(category, items);
+            const r = await processProduct(category, items, condition);
             resumo.push({ nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo });
         } catch (err) {
             // Um produto com problema não derruba os outros; a categoria dele

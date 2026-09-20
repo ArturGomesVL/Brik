@@ -119,3 +119,24 @@ test('strike: raspagem com páginas limitadas (--paginas) nunca aplica strike', 
     assert.equal(prontas.length, 0);
     assert.equal(puladas.length, 2);
 });
+
+test('condição vem da busca: conditionFromScrape aceita novo/usado e recusa o resto', () => {
+    const { conditionFromScrape } = require('./produtos');
+    assert.equal(conditionFromScrape('usado'), 'usado');
+    assert.equal(conditionFromScrape('novo'), 'novo');
+    assert.throws(() => conditionFromScrape('defeito'), /não suportada/);
+    assert.throws(() => conditionFromScrape(undefined), /não suportada/);
+});
+
+test('withScrapeCondition: "lacrado" numa busca de usado continua usado, inclusive vindo do cache', () => {
+    const { withScrapeCondition } = require('./produtos');
+    const itens = [
+        { url: 'a', title: 'iPhone 13 LACRADO', category_match: true, variant: 'iphone-13', condition: 'novo' },
+        { url: 'b', title: 'iPhone 11', category_match: true, variant: 'iphone-11', condition: 'usado' },
+        { url: 'c', title: 'Capinha', category_match: false, variant: null, condition: null },
+    ];
+    const r = withScrapeCondition(itens, 'usado');
+    assert.deepEqual(r.map((i) => i.condition), ['usado', 'usado', null]);
+    assert.equal(itens[0].condition, 'novo', 'não altera o original');
+    assert.equal(withScrapeCondition(itens, 'novo')[1].condition, 'novo');
+});
