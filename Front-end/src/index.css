@@ -10,16 +10,22 @@
   --color-gain: #0a7d43;
   --color-gain-bg: #e3f6ec;
 
-  /* Dashboard (tema escuro). Textos e marcas de dados usam estes tokens. */
-  --color-night: #0c0c0d;
-  --color-night-card: #161617;
-  --color-night-raise: #212124;
-  --color-night-line: #29292c;
-  --color-night-mute: #8d8d95;
-  --color-signal: #4f7df0;
-  --color-up: #34d399;
-  --color-down: #f87171;
-  --color-warn: #f5a524;
+  /* Dashboard (tema claro). O branco domina, o preto carrega a informação e a
+     cor aparece só no resultado financeiro. Os nomes são semânticos de propósito:
+     para trocar o tema de novo, basta mexer nestes valores — nenhum componente
+     tem cor escrita na mão. */
+  --color-surface: #ffffff; /* fundo da página */
+  --color-surface-card: #ffffff; /* cards: separados por borda + sombra, não por tom */
+  --color-surface-raise: #f4f4f6; /* preenchimentos sutis: trilhos, abas, hover */
+  --color-line: #e8e8ec; /* bordas e divisores */
+  --color-mute: #6b6b73; /* texto secundário (cinza médio) */
+  --color-strong: #000000; /* texto principal, títulos, valores */
+  --color-profit: #1d4ed8; /* lucro / resultado positivo */
+  --color-loss: #c62f2f; /* prejuízo / resultado negativo */
+  --color-warn: #b4791a; /* único tom extra: status "reservado" */
+
+  /* Sombra dos cards: discreta, só o suficiente para descolar do fundo branco. */
+  --shadow-card: 0 1px 2px rgba(16, 16, 20, 0.05), 0 1px 1px rgba(16, 16, 20, 0.03);
 }
 
 body {
@@ -155,29 +161,52 @@ body {
   animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* Entrada progressiva do Dashboard: a interface se monta elemento por elemento.
-   Cada um traz --step (sua posição na sequência, definida em components/dashboard/
-   reveal.js) e o atraso sai de --step × --reveal-stagger. */
+/* Entrada do Dashboard ---------------------------------------------------
+   Duas camadas. Primeiro a superfície preta entra por cima da tela anterior
+   (clara) num fade curto; logo em seguida a interface se monta elemento por
+   elemento, cada um nascendo no próprio lugar — sem deslizar. Cada elemento
+   traz --step (sua posição na sequência, definida em components/dashboard/
+   reveal.js) e o atraso sai de --reveal-lead + --step × --reveal-stagger. */
 :root {
-  --reveal-stagger: 62ms;
+  --reveal-lead: 180ms; /* espera antes do primeiro elemento, enquanto o fundo entra */
+  --reveal-stagger: 72ms; /* distância de um elemento para o seguinte */
 }
 
 @media (max-width: 640px) {
   :root {
-    --reveal-stagger: 42ms;
+    --reveal-stagger: 56ms;
   }
 }
 
+/* O fundo assenta de um cinza claro para o branco. Anima background-color, e
+   não opacity: opacity no elemento raiz apagaria todos os descendentes durante
+   a captura da view transition, e a logo deixaria de viajar da Home para cá. */
+@keyframes reveal-surface {
+  from { background-color: var(--color-surface-raise); }
+  to { background-color: var(--color-surface); }
+}
+
+.reveal-surface {
+  animation: reveal-surface 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Bolha: opacidade e escala, nada de translate — o elemento não vem de fora,
+   ele surge onde já vai ficar. O pico em 1.007 dá o "pop" sem chegar a balançar,
+   e a curva termina em `none` para não deixar um transform preso no elemento. */
 @keyframes reveal {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: none; }
+  0% { opacity: 0; transform: scale(0.94); }
+  55% { transform: scale(1.007); }
+  100% { opacity: 1; transform: none; }
 }
 
 .reveal {
-  animation: reveal 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  animation-delay: calc(var(--step, 0) * var(--reveal-stagger));
+  animation: reveal 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--reveal-lead) + var(--step, 0) * var(--reveal-stagger));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal { animation: none; }
+  .reveal,
+  .reveal-surface {
+    animation: none;
+  }
 }

@@ -9,7 +9,7 @@ import MelhoresRois from '../components/dashboard/MelhoresRois.jsx'
 import MetricasMes from '../components/dashboard/MetricasMes.jsx'
 import MeuEstoque from '../components/dashboard/MeuEstoque.jsx'
 import { HiddenProvider } from '../components/dashboard/hidden.js'
-import { ENTRANCE_MS, RevealContext, revealProps } from '../components/dashboard/reveal.js'
+import { ENTRANCE_MS, RevealContext, surfaceProps } from '../components/dashboard/reveal.js'
 
 // Ainda não há tabela de estoque/vendas do usuário no Supabase. Quando existir, é
 // aqui que os dados reais entram (mesmo formato de data/dashboardData.js).
@@ -22,8 +22,10 @@ function useDashboardData() {
 
 // Ordem em que a tela se monta. Cada bloco numera os próprios elementos a partir
 // do número que recebe aqui, então é só mexer nesta lista para reordenar.
+// A logo não entra nesta lista: quem faz a entrada dela é a view transition, que
+// a traz da Home deslizando até o centro. Dar um pop nela por cima esconderia
+// justamente essa viagem (o pop a deixa invisível no instante da captura).
 const STEP = {
-  logo: 0,
   lucro: 1, // + título, valor, comparação, período e gráfico (1 a 6)
   capitalParado: 7,
   giroMedio: 8,
@@ -48,8 +50,10 @@ function Dashboard() {
   return (
     <RevealContext.Provider value={entering}>
       <HiddenProvider value={hidden}>
-        <div className="mx-auto min-h-screen w-full max-w-md bg-night pb-36 text-white shadow-xl">
-          <BrandHeader dark {...revealProps(STEP.logo, entering)} />
+        <div
+          {...surfaceProps(entering, 'mx-auto min-h-screen w-full max-w-md bg-surface pb-36 text-strong shadow-xl')}
+        >
+          <BrandHeader dashboard />
 
           <h1 className="sr-only">Dashboard</h1>
 

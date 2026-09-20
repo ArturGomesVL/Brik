@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { formatBRL, formatInt } from '../../lib/format.js'
+import { COLOR } from './palette.js'
 import { useReveal } from './reveal.js'
 import { Card, Eyebrow, Masked, Segmented } from './ui.jsx'
 
+// Três estados, três tons: neutro enquanto espera, âmbar quando está preso a
+// alguém, azul quando virou resultado.
 const STATUS = {
-  anunciado: { label: 'Anunciado', className: 'text-signal' },
+  anunciado: { label: 'Anunciado', className: 'text-mute' },
   reservado: { label: 'Reservado', className: 'text-warn' },
-  vendido: { label: 'Vendido', className: 'text-up' },
+  vendido: { label: 'Vendido', className: 'text-profit' },
 }
 
 const TABS = [
@@ -26,8 +29,8 @@ function Photo({ src }) {
   return (
     <span
       aria-hidden="true"
-      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-night-line font-mono text-[9px] tracking-widest text-night-mute"
-      style={{ backgroundImage: 'repeating-linear-gradient(45deg, #1f1f22 0 6px, #18181a 6px 12px)' }}
+      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-line font-mono text-[9px] tracking-widest text-mute"
+      style={{ backgroundImage: `repeating-linear-gradient(45deg, ${COLOR.raise} 0 6px, ${COLOR.surface} 6px 12px)` }}
     >
       FOTO
     </span>
@@ -44,7 +47,7 @@ function Row({ item }) {
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{item.titulo}</p>
-          <p className="mt-1 truncate text-xs text-night-mute">
+          <p className="mt-1 truncate text-xs text-mute">
             Compra <Masked>{formatBRL(item.compra)}</Masked> · há {formatInt(item.dias)} {item.dias === 1 ? 'dia' : 'dias'}
           </p>
         </div>
@@ -84,7 +87,7 @@ function MeuEstoque({ step, data }) {
       {items.length === 0 ? (
         <Card as="div" {...reveal(2, 'flex flex-col items-center gap-1 px-6 py-10 text-center')}>
           <p className="font-medium">{EMPTY_TEXT[tab].title}</p>
-          <p className="text-sm text-night-mute">{EMPTY_TEXT[tab].hint}</p>
+          <p className="text-sm text-mute">{EMPTY_TEXT[tab].hint}</p>
         </Card>
       ) : (
         <ul {...reveal(2, 'flex flex-col gap-3')}>

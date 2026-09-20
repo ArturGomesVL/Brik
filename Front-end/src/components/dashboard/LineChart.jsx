@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from 'react'
 import { formatCompact } from '../../lib/format.js'
+import { COLOR } from './palette.js'
 import { useHidden } from './hidden.js'
 
 const W = 340
@@ -7,9 +8,9 @@ const H = 150
 const PAD = { l: 36, r: 12, t: 10, b: 24 }
 const PLOT_W = W - PAD.l - PAD.r
 const PLOT_H = H - PAD.t - PAD.b
-const SURFACE = '#161617'
-const GRID = '#29292c'
-const MUTED = '#8d8d95'
+const SURFACE = COLOR.surface
+const GRID = COLOR.line
+const MUTED = COLOR.mute
 
 // Marcas de eixo "redondas" (1k, 2k, 2,5k, 5k, 10k…) que cobrem o intervalo dos dados.
 function niceTicks(min, max) {
@@ -35,7 +36,7 @@ function LineChart({ labels, series, formatValue, ariaLabel }) {
 
   if (n === 0 || all.length === 0) {
     return (
-      <div className="flex h-[150px] items-center justify-center text-sm text-night-mute">
+      <div className="flex h-[150px] items-center justify-center text-sm text-mute">
         Sem dados neste período
       </div>
     )
@@ -181,10 +182,10 @@ function LineChart({ labels, series, formatValue, ariaLabel }) {
 
         {active !== null && (
           <div
-            className="pointer-events-none absolute top-0 z-10 min-w-32 -translate-x-1/2 rounded-xl border border-night-line bg-night-raise px-3 py-2 text-xs shadow-lg"
+            className="pointer-events-none absolute top-0 z-10 min-w-32 -translate-x-1/2 rounded-xl border border-line bg-surface-raise px-3 py-2 text-xs shadow-lg"
             style={{ left: `${tooltipLeft}%` }}
           >
-            <p className="mb-1 font-mono text-[10px] text-night-mute">{labels[active]}</p>
+            <p className="mb-1 font-mono text-[10px] text-mute">{labels[active]}</p>
             {series.map((s) => (
               <p key={s.key} className="flex items-center gap-2">
                 <span
@@ -192,15 +193,15 @@ function LineChart({ labels, series, formatValue, ariaLabel }) {
                   className="inline-block h-0 w-3.5 shrink-0 border-t-2"
                   style={{ borderColor: s.color, borderStyle: s.dashed ? 'dotted' : 'solid' }}
                 />
-                <strong className="font-bold text-white">{hidden ? '••••' : formatValue(s.values[active])}</strong>
-                <span className="text-night-mute">{s.label}</span>
+                <strong className="font-bold text-strong">{hidden ? '••••' : formatValue(s.values[active])}</strong>
+                <span className="text-mute">{s.label}</span>
               </p>
             ))}
           </div>
         )}
       </div>
 
-      <ul className="mt-3 flex gap-4 border-t border-night-line pt-3 text-xs text-night-mute">
+      <ul className="mt-3 flex gap-4 border-t border-line pt-3 text-xs text-mute">
         {series.map((s) => (
           <li key={s.key} className="flex items-center gap-2">
             <svg width="16" height="4" aria-hidden="true">

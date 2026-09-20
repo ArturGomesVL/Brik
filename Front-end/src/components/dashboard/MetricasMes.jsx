@@ -5,7 +5,7 @@ import { Card, Delta, Eyebrow, Masked } from './ui.jsx'
 function Tile({ label, children, delta, reveal }) {
   return (
     <Card as="div" {...reveal}>
-      <p className="text-xs text-night-mute">{label}</p>
+      <p className="text-xs text-mute">{label}</p>
       <p className="mt-2 text-[22px] font-bold leading-none tracking-tight">{children}</p>
       <p className="mt-2 min-h-4 text-[11px]">{delta}</p>
     </Card>
@@ -36,7 +36,7 @@ function MetricasMes({ step, data }) {
           reveal={reveal(2, 'p-3.5')}
         >
           {formatInt(data.vendidos)}
-          <span className="ml-1 text-sm font-medium text-night-mute">un</span>
+          <span className="ml-1 text-sm font-medium text-mute">un</span>
         </Tile>
 
         <Tile

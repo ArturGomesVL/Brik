@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { formatBRL, formatInt } from '../../lib/format.js'
+import { COLOR, ROI_RAMP } from './palette.js'
 import { useReveal } from './reveal.js'
 import { Card, Eyebrow, Masked } from './ui.jsx'
 
-// A fatia selecionada fica branca; as demais seguem uma rampa de azul (mais claro = melhor ROI).
-const RAMP = ['#5b8def', '#4f7df0', '#3d63c4', '#2f4d99', '#263d78']
-const SELECTED = '#ffffff'
+// A fatia selecionada fica preta; as demais seguem a rampa de azul (mais escuro = melhor ROI).
+const RAMP = ROI_RAMP
+const SELECTED = COLOR.strong
 
 const SIZE = 148
 const RADIUS = 58
@@ -25,7 +26,7 @@ function MelhoresRois({ step, data }) {
           <h2 className="text-sm font-bold">Melhores ROIs</h2>
           <Eyebrow>por modelo</Eyebrow>
         </div>
-        <p {...reveal(1, 'py-10 text-center text-sm text-night-mute')}>
+        <p {...reveal(1, 'py-10 text-center text-sm text-mute')}>
           Os modelos com melhor retorno aparecem aqui.
         </p>
       </Card>
@@ -78,13 +79,13 @@ function MelhoresRois({ step, data }) {
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="text-[32px] font-bold leading-none tracking-tight">{formatInt(current.roi)}%</span>
           <span className="mt-1 max-w-[88px] truncate text-xs font-medium">{current.modelo ?? current.nome}</span>
-          <span className="mt-1 font-mono text-[9px] text-night-mute">
+          <span className="mt-1 font-mono text-[9px] text-mute">
             {formatInt(current.un)} un · <Masked>{formatBRL(current.lucro)}</Masked>
           </span>
         </div>
       </div>
 
-      <p {...reveal(1, 'mt-4 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-night-mute')}>
+      <p {...reveal(1, 'mt-4 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-mute')}>
         Toque em uma fatia
       </p>
 
@@ -98,12 +99,12 @@ function MelhoresRois({ step, data }) {
                 aria-pressed={active}
                 onClick={() => setSelected(i)}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
-                  active ? 'bg-night-raise' : 'hover:bg-night-raise/60'
+                  active ? 'bg-surface-raise' : 'hover:bg-surface-raise/60'
                 }`}
               >
                 <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-[2px]" style={{ backgroundColor: colorOf(i) }} />
                 <span className="flex-1 truncate font-semibold">{item.nome}</span>
-                <span className="font-mono text-xs text-night-mute">{formatInt(item.un)} un</span>
+                <span className="font-mono text-xs text-mute">{formatInt(item.un)} un</span>
                 <span className="w-10 text-right font-bold">{formatInt(item.roi)}%</span>
               </button>
             </li>
