@@ -67,37 +67,6 @@ body {
     inset 0 -1px 0.5px rgba(255, 255, 255, 0.1);
 }
 
-/* As duas pílulas da navbar (altura 76px) têm a ponta de dentro "escavada" por um
-   círculo concêntrico ao botão "+" (raio 49px). As pontas ficam a 31px do centro do
-   "+", de modo que os cantos da pílula caem exatamente sobre o círculo e formam as
-   pontas do desenho. A máscara também recorta o backdrop-filter. */
-.pill-left {
-  border-radius: 38px 8px 8px 38px;
-}
-
-.pill-right {
-  border-radius: 8px 38px 38px 8px;
-}
-
-.glass-bar.pill-left {
-  -webkit-mask-image: radial-gradient(circle 49px at calc(100% + 31px) 50%, transparent 48.5px, #000 49.5px);
-  mask-image: radial-gradient(circle 49px at calc(100% + 31px) 50%, transparent 48.5px, #000 49.5px);
-}
-
-.glass-bar.pill-right {
-  -webkit-mask-image: radial-gradient(circle 49px at -31px 50%, transparent 48.5px, #000 49.5px);
-  mask-image: radial-gradient(circle 49px at -31px 50%, transparent 48.5px, #000 49.5px);
-}
-
-/* Sem sombra projetada nas pílulas: a máscara cortaria a sombra da própria pílula, e
-   uma sombra em elemento à parte pintava de branco a área escavada ao lado do "+". */
-
-/* Aro de luz ao longo da curva escavada, que a máscara não desenha sozinha. */
-.glass-notch-rim {
-  border: 1px solid rgba(255, 255, 255, 0.26);
-  box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.06);
-}
-
 /* A bolha é vidro quase transparente: o centro fica limpo (o ícone aparece nítido)
    e só as bordas refratam, com blur, brilho e um aro fino, como no WhatsApp.
    O elemento em si NÃO usa backdrop-filter: quem tem backdrop-filter vira "raiz de
@@ -164,8 +133,8 @@ body {
   box-shadow:
     inset 1.5px 1.5px 1px -0.5px rgba(255, 255, 255, 0.7),
     inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.3),
-    0 0 0 2px rgba(255, 255, 255, 0.55),
-    0 8px 18px -6px rgba(0, 20, 80, 0.45);
+    0 0 0 4px rgba(255, 255, 255, 0.4),
+    0 0 16px 2px rgba(80, 130, 255, 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {

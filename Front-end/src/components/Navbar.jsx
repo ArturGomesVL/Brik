@@ -8,7 +8,7 @@ const SMOOTH = 'cubic-bezier(0.32, 0.72, 0, 1)'
 const GLIDE = 'cubic-bezier(0.33, 0.02, 0.15, 1)'
 const DRAG_THRESHOLD = 6
 
-// As abas ficam divididas em duas pílulas de vidro, uma de cada lado do botão "+".
+// As abas ficam em uma única pílula de vidro, metade de cada lado do botão "+".
 const SPLIT = NAV_ITEMS.length / 2
 const LEFT_ITEMS = NAV_ITEMS.slice(0, SPLIT)
 const RIGHT_ITEMS = NAV_ITEMS.slice(SPLIT)
@@ -36,8 +36,7 @@ function Navbar() {
   const drag = useRef({ armed: false, moved: false, startX: 0, x0: 0, x: 0 })
   const swallowClick = useRef(false)
 
-  // Mede onde cada aba está (as pílulas têm o "+" e espaços entre elas, então a
-  // bolha não anda em passos iguais) e dimensiona a bolha para caber em uma aba.
+  // Mede onde cada aba está (o "+" no meio faz a bolha não andar em passos iguais) e dimensiona a bolha para caber em uma aba.
   function measure() {
     const row = rowRef.current
     const lens = lensRef.current
@@ -228,38 +227,26 @@ function Navbar() {
     if (swallowClick.current) event.preventDefault()
   }
 
-  // A ponta de dentro de cada pílula é escavada em volta do "+" (ver .pill-left /
-  // .pill-right no CSS), por isso ela tem folga extra de lado para a bolha não vazar.
-  const renderPill = (items, offset, side) => (
-    <div className="relative flex-1">
-      <div className={`glass-bar pill-${side} absolute inset-0`} aria-hidden="true" />
-      <ul
-        className={`relative z-[2] grid grid-cols-2 py-1.5 ${
-          side === 'left' ? 'pl-1.5 pr-5' : 'pl-5 pr-1.5'
-        }`}
-      >
-        {items.map(({ path, label, Icon }, i) => (
-          <li key={path}>
-            <NavLink
-              to={path}
-              end={path === '/'}
-              viewTransition
-              data-index={offset + i}
-              draggable={false}
-              className={({ isActive }) =>
-                `flex h-16 flex-col items-center justify-center gap-1 rounded-full text-[10px] font-medium text-white transition-opacity ${
-                  isActive ? 'opacity-100' : 'opacity-75'
-                }`
-              }
-            >
-              <Icon className="h-7 w-7" />
-              <span>{label}</span>
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
+  const renderItems = (items, offset) =>
+    items.map(({ path, label, Icon }, i) => (
+      <li key={path} className="flex-1">
+        <NavLink
+          to={path}
+          end={path === '/'}
+          viewTransition
+          data-index={offset + i}
+          draggable={false}
+          className={({ isActive }) =>
+            `flex h-16 flex-col items-center justify-center gap-1 rounded-full text-[10px] font-medium text-white transition-opacity ${
+              isActive ? 'opacity-100' : 'opacity-75'
+            }`
+          }
+        >
+          <Icon className="h-7 w-7" />
+          <span>{label}</span>
+        </NavLink>
+      </li>
+    ))
 
   return (
     <nav
@@ -268,7 +255,7 @@ function Navbar() {
     >
       <div
         ref={rowRef}
-        className="relative flex touch-none select-none items-center gap-[3px]"
+        className="relative flex touch-none select-none items-center "
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
@@ -276,26 +263,23 @@ function Navbar() {
         onPointerLeave={onPointerLeave}
         onClickCapture={onClickCapture}
       >
-        {renderPill(LEFT_ITEMS, 0, 'left')}
+        <div className="glass-bar absolute inset-0 rounded-full" aria-hidden="true" />
 
-        <NavLink
-          to={ADD_ITEM.path}
-          viewTransition
-          aria-label={ADD_ITEM.label}
-          draggable={false}
-          className="glass-add z-[3] flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white"
-        >
-          <PlusIcon className="h-7 w-7" />
-        </NavLink>
-
-        {renderPill(RIGHT_ITEMS, SPLIT, 'right')}
-
-        <div
-          className="pointer-events-none absolute left-1/2 top-1/2 z-[1] h-[76px] w-[100px] -translate-x-1/2 -translate-y-1/2 overflow-hidden"
-          aria-hidden="true"
-        >
-          <div className="glass-notch-rim absolute left-0 top-1/2 h-[100px] w-[100px] -translate-y-1/2 rounded-full" />
-        </div>
+        <ul className="relative z-[2] flex w-full items-center p-1.5">
+          {renderItems(LEFT_ITEMS, 0)}
+          <li className="flex shrink-0 justify-center px-1">
+            <NavLink
+              to={ADD_ITEM.path}
+              viewTransition
+              aria-label={ADD_ITEM.label}
+              draggable={false}
+              className="glass-add flex h-14 w-14 items-center justify-center rounded-full text-white"
+            >
+              <PlusIcon className="h-7 w-7" />
+            </NavLink>
+          </li>
+          {renderItems(RIGHT_ITEMS, SPLIT)}
+        </ul>
 
         <div
           ref={lensRef}
