@@ -1,107 +1,40 @@
-// Lógica da calculadora, sem React: dá para testar e raciocinar sobre ela sozinha.
-//
-// O número digitado vive como string com ponto ("12.5"), para a digitação não ter
-// que lidar com separador; a vírgula aparece só em toDisplay. `pending` guarda o
-// operando da esquerda e a operação em aberto, e `fresh` diz se o próximo dígito
-// começa um número novo (depois de "=", de um operador ou de um resultado).
+// Lógica da calculadora de revenda, sem React: dá para testar e raciocinar sobre
+// ela sozinha. Cada campo guarda os dígitos digitados como string ("1450"), em
+// reais inteiros — o teclado tem 00 e 000 justamente para não precisar de vírgula.
 
-export const ERROR = 'Erro'
+export const FIELDS = [
+  { key: 'compra', label: 'Preço de compra' },
+  { key: 'reparos', label: 'Reparos e peças' },
+  { key: 'transporte', label: 'Transporte' },
+  { key: 'outros', label: 'Outros custos' },
+  { key: 'venda', label: 'Preço de venda' },
+]
 
-const MAX_DIGITS = 12
+export const EMPTY = Object.fromEntries(FIELDS.map(({ key }) => [key, '']))
 
-const digitsOf = (raw) => raw.replace(/[-.]/g, '').length
+const MAX_DIGITS = 9
 
-// Corta o ruído de ponto flutuante (0,1 + 0,2) sem inventar precisão.
-const fromNumber = (n) => (Number.isFinite(n) ? String(Number(n.toPrecision(12))) : ERROR)
-
-const apply = (a, op, b) => {
-  switch (op) {
-    case '+':
-      return a + b
-    case '-':
-      return a - b
-    case '*':
-      return a * b
-    case '/':
-      return b === 0 ? NaN : a / b
-    default:
-      return b
-  }
+// Aplica uma tecla ao valor de um campo. key: '0'…'9', '00', '000', 'backspace', 'clear'.
+export function press(value, key) {
+  if (key === 'backspace') return value.slice(0, -1)
+  if (key === 'clear') return ''
+  const next = (value + key).replace(/^0+/, '')
+  return next.length > MAX_DIGITS ? value : next
 }
 
-// "1234.5" -> "1.234,5". Mantém a vírgula solta enquanto o usuário digita.
-export function toDisplay(raw) {
-  if (raw === ERROR || raw.includes('e')) return raw
-  const negative = raw.startsWith('-')
-  const [int, dec] = (negative ? raw.slice(1) : raw).split('.')
-  const grouped = new Intl.NumberFormat('pt-BR').format(BigInt(int === '' ? '0' : int))
-  const shown = dec === undefined ? grouped : `${grouped},${dec}`
-  return negative ? `-${shown}` : shown
-}
+export function resultado(values) {
+  const n = (key) => Number(values[key] || 0)
+  const custo = n('compra') + n('reparos') + n('transporte') + n('outros')
+  const venda = n('venda')
+  const lucro = venda - custo
 
-export const INITIAL = { raw: '0', pending: null, fresh: true }
-
-export function reducer(state, action) {
-  const { raw, pending, fresh } = state
-
-  switch (action.type) {
-    case 'digit': {
-      if (raw === ERROR || fresh) return { ...state, raw: action.value, fresh: false }
-      if (raw === '0') return { ...state, raw: action.value }
-      if (raw === '-0') return { ...state, raw: `-${action.value}` }
-      if (digitsOf(raw) >= MAX_DIGITS) return state
-      return { ...state, raw: raw + action.value }
-    }
-
-    case 'decimal': {
-      if (raw === ERROR || fresh) return { ...state, raw: '0.', fresh: false }
-      if (raw.includes('.')) return state
-      return { ...state, raw: `${raw}.` }
-    }
-
-    case 'operator': {
-      if (raw === ERROR) return state
-      // Só fecha a conta pendente se houver um segundo operando digitado; caso
-      // contrário o usuário está apenas trocando de operação.
-      if (pending && !fresh) {
-        const next = fromNumber(apply(pending.value, pending.op, Number(raw)))
-        if (next === ERROR) return { raw: ERROR, pending: null, fresh: true }
-        return { raw: next, pending: { value: Number(next), op: action.op }, fresh: true }
-      }
-      return { ...state, pending: { value: Number(raw), op: action.op }, fresh: true }
-    }
-
-    case 'equals': {
-      if (raw === ERROR || !pending) return state
-      return {
-        raw: fromNumber(apply(pending.value, pending.op, Number(raw))),
-        pending: null,
-        fresh: true,
-      }
-    }
-
-    case 'backspace': {
-      if (raw === ERROR) return INITIAL
-      if (fresh) return state
-      const next = raw.slice(0, -1)
-      if (next === '' || next === '-') return { ...state, raw: '0', fresh: true }
-      return { ...state, raw: next }
-    }
-
-    case 'percent': {
-      if (raw === ERROR) return state
-      return { ...state, raw: fromNumber(Number(raw) / 100), fresh: true }
-    }
-
-    case 'negate': {
-      if (raw === ERROR || raw === '0') return state
-      return { ...state, raw: raw.startsWith('-') ? raw.slice(1) : `-${raw}` }
-    }
-
-    case 'clear':
-      return INITIAL
-
-    default:
-      return state
+  return {
+    custo,
+    venda,
+    lucro,
+    // Margem sobre a venda. Sem preço de venda não há margem a mostrar.
+    margem: venda > 0 ? (lucro / venda) * 100 : null,
+    // Quanto da barra de equilíbrio o custo ocupa (0–100). Acima da venda, enche.
+    custoPct: venda > 0 ? Math.min(custo / venda, 1) * 100 : custo > 0 ? 100 : 0,
   }
 }

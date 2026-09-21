@@ -1,131 +1,294 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeftIcon } from '../components/icons.jsx'
-import { INITIAL, reducer, toDisplay } from '../lib/calc.js'
+import { Card } from '../components/dashboard/ui.jsx'
+import { EMPTY, FIELDS, press, resultado } from '../lib/calc.js'
+import { formatBRL, formatDecimal, formatInt } from '../lib/format.js'
 
-// tone: como a tecla se pinta. num = branca com borda, op = azul, "=" = preta.
+// Calculadora de revenda: o usuário preenche os custos e o preço de venda com o
+// teclado da própria tela, e o cartão do topo responde na hora com lucro, margem
+// e quanto o preço ainda pode cair até empatar. Cores e fonte seguem o app:
+// Rubik, azul para lucro, vermelho para prejuízo, azul Brik para ação.
+
+// Rótulo pequeno em caixa alta, na Rubik (e não em mono, para não parecer genérico).
+const LABEL = 'text-[10px] font-medium uppercase tracking-[0.14em]'
+
 const KEYS = [
-  { label: 'AC', tone: 'clear', aria: 'Limpar tudo', action: { type: 'clear' } },
-  { label: '⌫', tone: 'aux', aria: 'Apagar último dígito', action: { type: 'backspace' } },
-  { label: '%', tone: 'aux', aria: 'Porcentagem', action: { type: 'percent' } },
-  { label: '÷', tone: 'op', aria: 'Dividir', action: { type: 'operator', op: '/' } },
-
-  { label: '7', tone: 'num', action: { type: 'digit', value: '7' } },
-  { label: '8', tone: 'num', action: { type: 'digit', value: '8' } },
-  { label: '9', tone: 'num', action: { type: 'digit', value: '9' } },
-  { label: '×', tone: 'op', aria: 'Multiplicar', action: { type: 'operator', op: '*' } },
-
-  { label: '4', tone: 'num', action: { type: 'digit', value: '4' } },
-  { label: '5', tone: 'num', action: { type: 'digit', value: '5' } },
-  { label: '6', tone: 'num', action: { type: 'digit', value: '6' } },
-  { label: '−', tone: 'op', aria: 'Subtrair', action: { type: 'operator', op: '-' } },
-
-  { label: '1', tone: 'num', action: { type: 'digit', value: '1' } },
-  { label: '2', tone: 'num', action: { type: 'digit', value: '2' } },
-  { label: '3', tone: 'num', action: { type: 'digit', value: '3' } },
-  { label: '+', tone: 'op', aria: 'Somar', action: { type: 'operator', op: '+' } },
-
-  { label: '±', tone: 'aux', aria: 'Trocar o sinal', action: { type: 'negate' } },
-  { label: '0', tone: 'num', action: { type: 'digit', value: '0' } },
-  { label: ',', tone: 'num', aria: 'Vírgula decimal', action: { type: 'decimal' } },
-  { label: '=', tone: 'equals', aria: 'Calcular', action: { type: 'equals' } },
+  { label: '7', key: '7' },
+  { label: '8', key: '8' },
+  { label: '9', key: '9' },
+  { label: '⌫', key: 'backspace', aria: 'Apagar último dígito', tone: 'aux' },
+  { label: '4', key: '4' },
+  { label: '5', key: '5' },
+  { label: '6', key: '6' },
+  { label: 'C', key: 'clear', aria: 'Zerar este campo', tone: 'aux' },
+  { label: '1', key: '1' },
+  { label: '2', key: '2' },
+  { label: '3', key: '3' },
+  { label: 'Próximo', key: 'next', tone: 'next' },
+  { label: '00', key: '00' },
+  { label: '0', key: '0' },
+  { label: '000', key: '000' },
 ]
 
 const TONE = {
-  num: 'border border-line bg-surface-card text-strong shadow-card hover:bg-surface-raise',
-  aux: 'bg-surface-raise text-strong hover:bg-line',
-  clear: 'bg-surface-raise text-loss hover:bg-line',
-  op: 'bg-surface-raise text-profit hover:bg-line',
-  equals: 'bg-strong text-surface hover:opacity-90',
+  num: 'border border-line bg-surface-card text-strong shadow-card hover:bg-surface-raise text-xl font-medium',
+  aux: 'bg-surface-raise text-mute hover:text-strong text-xl font-medium',
+  next: 'row-span-2 bg-brik px-2 text-center text-xs font-bold uppercase leading-tight tracking-[0.14em] text-white hover:bg-brik-dark',
 }
 
-// Teclado físico: no desktop a calculadora responde sem precisar do mouse.
-const FROM_KEY = {
-  '+': { type: 'operator', op: '+' },
-  '-': { type: 'operator', op: '-' },
-  '*': { type: 'operator', op: '*' },
-  '/': { type: 'operator', op: '/' },
-  '%': { type: 'percent' },
-  '=': { type: 'equals' },
-  Enter: { type: 'equals' },
-  Backspace: { type: 'backspace' },
-  Escape: { type: 'clear' },
-  ',': { type: 'decimal' },
-  '.': { type: 'decimal' },
-}
+// Tom do resultado: azul no lucro, vermelho no prejuízo, neutro no zero.
+const toneOf = (value) => (value > 0 ? 'text-profit' : value < 0 ? 'text-loss' : 'text-strong')
 
-const OP_LABEL = { '+': '+', '-': '−', '*': '×', '/': '÷' }
+function Equilibrio({ lucro, margem }) {
+  if (lucro > 0) {
+    return (
+      <span className="text-profit">
+        Pode cair {formatBRL(lucro)} · {formatInt(Math.round(margem))}%
+      </span>
+    )
+  }
+  if (lucro < 0) return <span className="text-loss">Faltam {formatBRL(-lucro)} para empatar</span>
+  return <span className="text-mute">No ponto de equilíbrio</span>
+}
 
 function Calculadora() {
-  const [state, dispatch] = useReducer(reducer, INITIAL)
+  const [values, setValues] = useState(EMPTY)
+  const [active, setActive] = useState(0)
+  const r = resultado(values)
+  const field = FIELDS[active].key
+  // No último campo (preço de venda) o botão azul deixa de avançar e passa a
+  // oferecer o próximo passo natural: guardar o item no estoque.
+  const isLast = active === FIELDS.length - 1
 
+  // Folha "nome do brique", aberta pelo botão azul no último campo.
+  const [naming, setNaming] = useState(false)
+  const [nome, setNome] = useState('')
+
+  function avancar() {
+    if (active === FIELDS.length - 1) setNaming(true)
+    else setActive((i) => i + 1)
+  }
+
+  function tap(key) {
+    if (key === 'next') {
+      avancar()
+      return
+    }
+    setValues((v) => ({ ...v, [field]: press(v[field], key) }))
+  }
+
+  function limpar() {
+    setValues(EMPTY)
+    setActive(0)
+  }
+
+  function fecharFolha() {
+    setNaming(false)
+    setNome('')
+  }
+
+  function adicionar(event) {
+    event.preventDefault()
+    if (!nome.trim()) return
+    // TODO: gravar { nome, ...values } no estoque. Ainda não existe onde guardar
+    // (não há tabela de estoque no Supabase); por enquanto só fecha e zera.
+    fecharFolha()
+    limpar()
+  }
+
+  // Teclado físico: no desktop a calculadora responde sem o mouse.
   useEffect(() => {
     const onKeyDown = (event) => {
+      // Com a folha aberta, o teclado é do campo de texto, não dos valores.
+      if (naming) {
+        if (event.key === 'Escape') fecharFolha()
+        return
+      }
       if (event.ctrlKey || event.metaKey || event.altKey) return
-      const action = /^[0-9]$/.test(event.key)
-        ? { type: 'digit', value: event.key }
-        : FROM_KEY[event.key]
-      if (!action) return
+      let key = null
+      if (/^[0-9]$/.test(event.key)) key = event.key
+      else if (event.key === 'Backspace') key = 'backspace'
+      else if (event.key === 'Escape') key = 'clear'
+      else if (event.key === 'Enter' || event.key === 'ArrowDown') key = 'next'
+      else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setActive((i) => (i - 1 + FIELDS.length) % FIELDS.length)
+        return
+      }
+      if (!key) return
       event.preventDefault()
-      dispatch(action)
+      if (key === 'next') {
+        if (active === FIELDS.length - 1) setNaming(true)
+        else setActive((i) => i + 1)
+      } else setValues((v) => ({ ...v, [FIELDS[active].key]: press(v[FIELDS[active].key], key) }))
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [active, naming])
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-surface pb-36 text-strong shadow-xl">
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-surface pb-28 text-strong shadow-xl">
       <header className="sticky top-0 z-40 flex items-center gap-2 bg-surface px-4 py-3">
         <Link
           to="/dashboard"
           viewTransition
           aria-label="Voltar para o dashboard"
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface-card text-strong shadow-card transition-colors hover:bg-surface-raise"
+          className="-ml-1 flex h-9 w-9 items-center justify-center rounded-xl text-strong transition-colors hover:bg-surface-raise"
         >
           <ArrowLeftIcon className="h-5 w-5" />
         </Link>
-        <h1 className="text-base font-bold">Calculadora</h1>
+        <h1 className="flex-1 text-xl font-bold tracking-tight">Calculadora</h1>
+        <button
+          type="button"
+          onClick={limpar}
+          className={`${LABEL} rounded-lg px-2 py-1.5 text-mute transition-colors hover:text-strong`}
+        >
+          Limpar
+        </button>
       </header>
 
-      <div className="flex flex-col px-4 pt-4">
-        {/* Visor. A conta em aberto fica acima, pequena, para não se perder o fio
-            depois de apertar um operador. */}
-        <div className="flex min-h-28 flex-col justify-end rounded-3xl border border-line bg-surface-card px-5 py-4 text-right shadow-card">
-          <p className="h-5 font-mono text-xs text-mute" aria-hidden="true">
-            {state.pending
-              ? `${toDisplay(String(state.pending.value))} ${OP_LABEL[state.pending.op]}`
-              : ''}
-          </p>
-          <output
-            aria-live="polite"
-            className="mt-1 block overflow-x-auto text-[44px] font-bold leading-none tracking-tight tabular-nums"
-          >
-            {toDisplay(state.raw)}
-          </output>
-        </div>
+      {/* Resultado */}
+      <div className="px-4">
+        <Card as="div" className="p-5" aria-live="polite">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className={`${LABEL} text-mute`}>Lucro líquido</p>
+              <p className={`mt-2 text-[40px] font-bold leading-none tracking-tight tabular-nums ${toneOf(r.lucro)}`}>
+                {formatBRL(r.lucro)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className={`${LABEL} text-mute`}>Margem</p>
+              <p className={`mt-2 text-xl font-bold tabular-nums ${r.margem == null ? 'text-mute' : toneOf(r.margem)}`}>
+                {r.margem == null ? '—' : `${r.margem > 0 ? '+' : ''}${formatDecimal(r.margem)}%`}
+              </p>
+            </div>
+          </div>
 
-        <div className="mt-4 grid grid-cols-4 gap-3">
-          {KEYS.map((key) => {
-            const active =
-              key.action.type === 'operator' && state.fresh && state.pending?.op === key.action.op
+          <div className={`${LABEL} mt-5 flex items-center justify-between gap-3`}>
+            <span className="text-mute">Ponto de equilíbrio</span>
+            <Equilibrio lucro={r.lucro} margem={r.margem} />
+          </div>
 
-            return (
+          {/* Barra: o custo ocupa a parte cinza; o que sobra até a venda é a folga. */}
+          <div className="mt-2.5 flex h-1.5 overflow-hidden rounded-full bg-surface-raise" aria-hidden="true">
+            <div
+              className={`h-full transition-[width] duration-300 ${r.lucro < 0 ? 'bg-loss' : 'bg-mute/35'}`}
+              style={{ width: `${r.custoPct}%` }}
+            />
+            {r.lucro > 0 && <div className="h-full flex-1 bg-profit" />}
+          </div>
+
+          <div className="mt-2 flex justify-between text-[11px] tabular-nums text-mute">
+            <span>Custo {formatBRL(r.custo)}</span>
+            <span>Venda {formatBRL(r.venda)}</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* Campos. Tocar em um deles o torna o alvo do teclado. */}
+      <ul className="mt-4 border-y border-line">
+        {FIELDS.map(({ key, label }, i) => {
+          const selected = i === active
+          const filled = values[key] !== ''
+          return (
+            <li key={key} className="border-b border-line last:border-b-0">
               <button
-                key={key.label}
                 type="button"
-                aria-label={key.aria}
-                aria-pressed={key.action.type === 'operator' ? active : undefined}
-                onClick={() => dispatch(key.action)}
-                className={`flex aspect-square items-center justify-center rounded-2xl text-2xl font-semibold transition-colors ${
-                  active ? 'bg-profit text-surface' : TONE[key.tone]
+                aria-pressed={selected}
+                onClick={() => setActive(i)}
+                className={`flex w-full items-center justify-between border-l-2 px-4 py-3.5 text-left transition-colors ${
+                  selected ? 'border-brik bg-surface-raise' : 'border-transparent hover:bg-surface-raise/60'
                 }`}
               >
-                {key.label}
+                <span className={`text-sm ${selected ? 'font-medium text-strong' : 'text-mute'}`}>{label}</span>
+                <span className="flex items-center gap-0.5">
+                  <span className={`text-base font-bold tabular-nums ${filled ? 'text-strong' : 'text-mute/60'}`}>
+                    {formatBRL(Number(values[key] || 0))}
+                  </span>
+                  {selected && (
+                    <span aria-hidden="true" className="h-5 w-0.5 rounded-full bg-brik motion-safe:animate-pulse" />
+                  )}
+                </span>
               </button>
-            )
-          })}
-        </div>
+            </li>
+          )
+        })}
+      </ul>
+
+      {/* Teclado */}
+      <div className="grid auto-rows-[3.5rem] grid-cols-4 gap-2 px-4 pt-4">
+        {KEYS.map(({ label, key, aria, tone = 'num' }) => (
+          <button
+            key={key}
+            type="button"
+            aria-label={aria}
+            onClick={() => tap(key)}
+            className={`flex items-center justify-center rounded-2xl tabular-nums transition-colors ${TONE[tone]}`}
+          >
+            {key === 'next' && isLast ? (
+              // Menor e sem o espaçamento entre letras: numa tecla de 1/4 da largura,
+              // "ADICIONAR NO" precisa caber inteiro na primeira linha.
+              <span className="whitespace-nowrap text-[10px] tracking-normal">
+                Adicionar no
+                <br />
+                Estoque
+              </span>
+            ) : (
+              label
+            )}
+          </button>
+        ))}
       </div>
+
+      {naming && <NomeDoBrique nome={nome} onChange={setNome} onSubmit={adicionar} onClose={fecharFolha} />}
+    </div>
+  )
+}
+
+// Folha que sobe do rodapé pedindo o nome do brique. Cobre também a navbar
+// (z acima dela) para o toque fora fechar sem navegar por engano.
+function NomeDoBrique({ nome, onChange, onSubmit, onClose }) {
+  const input = useRef(null)
+  useEffect(() => input.current?.focus(), [])
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center">
+      <button
+        type="button"
+        aria-label="Cancelar"
+        onClick={onClose}
+        className="absolute inset-0 bg-strong/40"
+      />
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="nome-brique"
+        onSubmit={onSubmit}
+        className="relative w-full max-w-md rounded-t-3xl bg-surface px-4 pb-8 pt-5 shadow-xl"
+      >
+        <label id="nome-brique" htmlFor="nome-brique-input" className={`${LABEL} text-mute`}>
+          Qual é o nome do brique?
+        </label>
+        <input
+          ref={input}
+          id="nome-brique-input"
+          type="text"
+          value={nome}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Ex.: iPhone 12 128GB"
+          autoComplete="off"
+          className="mt-2.5 w-full rounded-2xl border border-line bg-surface-card px-4 py-3.5 text-base text-strong shadow-card outline-none placeholder:text-mute/60 focus:border-brik"
+        />
+        <button
+          type="submit"
+          disabled={!nome.trim()}
+          className={`${LABEL} mt-3 w-full rounded-2xl bg-brik py-4 text-xs font-bold text-white transition-colors hover:bg-brik-dark disabled:opacity-40`}
+        >
+          Adicionar
+        </button>
+      </form>
     </div>
   )
 }

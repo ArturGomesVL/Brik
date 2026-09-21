@@ -92,10 +92,14 @@ function Dashboard() {
             <Link
               to="/calculadora"
               viewTransition
-              className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl bg-strong px-3 py-2.5 text-[10px] font-medium leading-none text-surface shadow-[0_8px_24px_-8px_rgba(16,16,20,0.45)] transition-opacity hover:opacity-90"
+              className="pointer-events-auto flex size-20 flex-col items-center justify-center gap-1 rounded-2xl bg-strong text-[10px] font-medium leading-none text-surface shadow-[0_8px_24px_-8px_rgba(16,16,20,0.45)] transition-opacity hover:opacity-90"
             >
               <CalculatorIcon className="h-6 w-6" />
-              Calculadora
+              <span className="text-center leading-tight">
+                Calcular
+                <br />
+                Brique
+              </span>
             </Link>
           </div>
         </div>
