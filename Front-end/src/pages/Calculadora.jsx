@@ -128,7 +128,7 @@ function Calculadora() {
   }, [active, naming])
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-surface pb-28 text-strong shadow-xl">
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-surface pb-6 text-strong shadow-xl">
       <header className="sticky top-0 z-40 flex items-center gap-2 bg-surface px-4 py-3">
         <Link
           to="/dashboard"
@@ -247,8 +247,7 @@ function Calculadora() {
   )
 }
 
-// Folha que sobe do rodapé pedindo o nome do brique. Cobre também a navbar
-// (z acima dela) para o toque fora fechar sem navegar por engano.
+// Folha que sobe do rodapé pedindo o nome do brique. Tocar fora dela fecha.
 function NomeDoBrique({ nome, onChange, onSubmit, onClose }) {
   const input = useRef(null)
   useEffect(() => input.current?.focus(), [])

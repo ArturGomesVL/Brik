@@ -13,13 +13,14 @@ const router = createBrowserRouter([
       { path: '/', element: <Home /> },
       { path: '/produto/:id', element: <ProductDetail /> },
       { path: '/dashboard', element: <Dashboard /> },
-      // Tela cheia, aberta pelo botão no card "Investimento x Retorno".
-      { path: '/calculadora', element: <Calculadora /> },
       { path: '/salvos', element: <EmBreve title="Salvos" /> },
       { path: '/perfil', element: <EmBreve title="Meu Perfil" /> },
       { path: '/adicionar', element: <EmBreve title="Adicionar" /> },
     ],
   },
+  // Fora do Layout de propósito: a calculadora é uma tela cheia, sem navbar.
+  // Entra pelo botão "Calcular Brique" do dashboard e sai pela seta do header.
+  { path: '/calculadora', element: <Calculadora /> },
 ])
 
 function App() {

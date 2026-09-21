@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate, useViewTransitionState } from 'react-router-dom'
 import { NAV_ITEMS, ADD_ITEM } from '../config/navItems.js'
 import { PlusIcon } from './icons.jsx'
 
@@ -27,6 +27,11 @@ function Navbar() {
   const navigate = useNavigate()
   const activeIndex = getActiveIndex(pathname)
   const [pressed, setPressed] = useState(false)
+  // A calculadora é tela cheia, sem navbar. Só nas navegações de/para ela a barra
+  // ganha um view-transition-name, e o index.css a faz descer ao sair e subir ao
+  // voltar. Nas trocas de aba o nome fica de fora, para não transformar a barra
+  // em imagem durante a transição e esconder a bolha deslizando.
+  const toCalculator = useViewTransitionState('/calculadora')
 
   const rowRef = useRef(null)
   const lensRef = useRef(null)
@@ -252,6 +257,7 @@ function Navbar() {
     <nav
       aria-label="Navegação principal"
       className="fixed inset-x-0 bottom-4 z-50 mx-auto w-[calc(100%-2rem)] max-w-sm"
+      style={toCalculator ? { viewTransitionName: 'navbar' } : undefined}
     >
       <div
         ref={rowRef}

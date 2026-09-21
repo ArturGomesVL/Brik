@@ -161,6 +161,32 @@ body {
   animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Navbar ao abrir a calculadora (tela cheia, sem barra): desce e some. Ao voltar
+   para o dashboard, faz o caminho inverso. O nome "navbar" só existe durante
+   essas navegações (ver Navbar.jsx). */
+@keyframes navbar-out {
+  to { transform: translateY(calc(100% + 1rem)); opacity: 0; }
+}
+
+@keyframes navbar-in {
+  from { transform: translateY(calc(100% + 1rem)); opacity: 0; }
+}
+
+::view-transition-old(navbar) {
+  animation: navbar-out 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+::view-transition-new(navbar) {
+  animation: navbar-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(navbar),
+  ::view-transition-new(navbar) {
+    animation: none;
+  }
+}
+
 /* Entrada do Dashboard ---------------------------------------------------
    Duas camadas. Primeiro a superfície preta entra por cima da tela anterior
    (clara) num fade curto; logo em seguida a interface se monta elemento por
