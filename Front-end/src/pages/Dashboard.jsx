@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { dashboardExemplo, dashboardVazio } from '../data/dashboardData.js'
 import BrandHeader from '../components/BrandHeader.jsx'
+import { CalculatorIcon } from '../components/icons.jsx'
 import { CapitalParado, GiroMedio } from '../components/dashboard/CapitalGiro.jsx'
 import InvestimentoRetorno from '../components/dashboard/InvestimentoRetorno.jsx'
 import LucroAcumulado from '../components/dashboard/LucroAcumulado.jsx'
@@ -82,6 +83,21 @@ function Dashboard() {
               <MeuEstoque step={STEP.estoque} data={data.estoque} />
             </div>
           </main>
+
+          {/* Atalho flutuante da calculadora. Fica por cima do dashboard e não
+              rola com a página. O wrapper repete mx-auto + max-w-md da coluna
+              para o botão não descolar dela no desktop, e o top-52 o coloca no
+              alto à direita, logo abaixo do seletor de período. */}
+          <div className="pointer-events-none fixed inset-x-0 top-52 z-40 mx-auto flex w-full max-w-md justify-end px-4">
+            <Link
+              to="/calculadora"
+              viewTransition
+              className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl bg-strong px-3 py-2.5 text-[10px] font-medium leading-none text-surface shadow-[0_8px_24px_-8px_rgba(16,16,20,0.45)] transition-opacity hover:opacity-90"
+            >
+              <CalculatorIcon className="h-6 w-6" />
+              Calculadora
+            </Link>
+          </div>
         </div>
       </HiddenProvider>
     </RevealContext.Provider>
