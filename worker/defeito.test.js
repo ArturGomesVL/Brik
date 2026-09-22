@@ -96,3 +96,12 @@ test('histórico de preços (base das médias) só recebe anúncio sem defeito',
     assert.deepEqual(planHistory({ isNew: false, priceChanged: false, existingDefeito: false, defeito: false }), { insert: false, purge: false });
     assert.deepEqual(planHistory({ isNew: false, priceChanged: true, existingDefeito: false, defeito: false }), { insert: true, purge: false });
 });
+
+test('aparelho com defeito nunca é ótima/extraordinária — no máximo boa', () => {
+    const { capOpportunityLevelDefeituoso } = require('./defeito');
+    assert.equal(capOpportunityLevelDefeituoso('extraordinaria'), 'boa');
+    assert.equal(capOpportunityLevelDefeituoso('otima'), 'boa');
+    assert.equal(capOpportunityLevelDefeituoso('boa'), 'boa');
+    // preço nem era desconto: defeito não transforma em oportunidade
+    assert.equal(capOpportunityLevelDefeituoso('nenhuma'), 'nenhuma');
+});

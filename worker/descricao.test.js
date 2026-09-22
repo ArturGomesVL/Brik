@@ -56,15 +56,24 @@ test('buildVerificationMessage identifica cada anúncio pelo id do OLX', () => {
 });
 
 test('parseVerdicts casa pelo id, mesmo com a lista fora de ordem e cercada de markdown', () => {
-    const resposta = '```json\n[{"id":"2222222222","defeito":false,"motivo":""},{"id":"1111111111","defeito":true,"motivo":" tela trincada "}]\n```';
+    const resposta = '```json\n[{"id":"2222222222","defeito":false,"diverge":false,"motivo":""},{"id":"1111111111","defeito":true,"diverge":false,"motivo":" tela trincada "}]\n```';
     const v = parseVerdicts(resposta, ads);
-    assert.deepEqual(v.get(ads[0].url), { defeito: true, motivo: 'tela trincada' });
-    assert.deepEqual(v.get(ads[1].url), { defeito: false, motivo: '' });
+    assert.deepEqual(v.get(ads[0].url), { defeito: true, diverge: false, reprovado: true, motivo: 'tela trincada' });
+    assert.deepEqual(v.get(ads[1].url), { defeito: false, diverge: false, reprovado: false, motivo: '' });
 });
 
-test('parseVerdicts deixa de fora anúncio sem resposta ou com resposta malformada (fica pendente)', () => {
-    const v = parseVerdicts('[{"id":"1111111111","defeito":"sim"},{"id":"9999999999","defeito":true}]', ads);
+test('parseVerdicts reprova por divergência mesmo sem defeito físico (título não bate com a descrição)', () => {
+    const resposta = '[{"id":"1111111111","defeito":false,"diverge":true,"motivo":"descrição fala de outro modelo"}]';
+    const v = parseVerdicts(resposta, ads);
+    assert.deepEqual(v.get(ads[0].url), { defeito: false, diverge: true, reprovado: true, motivo: 'descrição fala de outro modelo' });
+});
+
+test('parseVerdicts deixa de fora anúncio sem resposta, sem "diverge" ou com resposta malformada (fica pendente)', () => {
+    const v = parseVerdicts('[{"id":"1111111111","defeito":"sim","diverge":false},{"id":"9999999999","defeito":true,"diverge":false}]', ads);
     assert.equal(v.size, 0);
+    // Resposta antiga (só "defeito", sem "diverge"): fica de fora, não interpreta parcialmente.
+    const v2 = parseVerdicts('[{"id":"1111111111","defeito":true,"motivo":"quebrado"}]', ads);
+    assert.equal(v2.size, 0);
 });
 
 test('parseVerdicts lança erro se a resposta não é um array JSON', () => {

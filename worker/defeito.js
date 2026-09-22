@@ -58,4 +58,12 @@ function planHistory({ isNew, priceChanged, existingDefeito, defeito }) {
     return { insert: isNew || priceChanged || existingDefeito === true, purge: false };
 }
 
-module.exports = { defeitoNoTitulo, mantemDefeituosos, planHistory };
+// Aparelho com defeito nunca é uma oportunidade "ótima"/"extraordinária": o desconto se
+// explica pelo defeito, não é um preço genuinamente abaixo do mercado. No máximo "boa"
+// (só um bom negócio por causa do defeito); "nenhuma" continua "nenhuma" — estar com
+// defeito não transforma um preço comum em oportunidade.
+function capOpportunityLevelDefeituoso(level) {
+    return level === 'otima' || level === 'extraordinaria' ? 'boa' : level;
+}
+
+module.exports = { defeitoNoTitulo, mantemDefeituosos, planHistory, capOpportunityLevelDefeituoso };

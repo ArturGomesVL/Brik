@@ -31,7 +31,7 @@ const {
     conditionFromScrape,
     withScrapeCondition,
 } = require('./produtos');
-const { defeitoNoTitulo, mantemDefeituosos, planHistory } = require('./defeito');
+const { defeitoNoTitulo, mantemDefeituosos, planHistory, capOpportunityLevelDefeituoso } = require('./defeito');
 const {
     LUCRO_MIN_VERIFICACAO,
     profitPct,
@@ -346,7 +346,7 @@ async function queryWithRetry(chunk, maxRetries = 3) {
         try {
             const { data, error } = await supabase
                 .from('classificacoes_ia')
-                .select('url, category, category_match, variant, condition, defeito, descricao_defeito')
+                .select('url, category, category_match, variant, condition, defeito, descricao_defeito, descricao_diverge')
                 .in('url', chunk);
 
             if (error) throw new Error(error.message, { cause: error });
@@ -765,7 +765,12 @@ async function processValidItems(validItems, category, mediaMap) {
             }
         }
 
-        const opportunityLevel = calcularOpportunityLevel(item.price, mediaRow);
+        // Aparelho com defeito nunca é "ótima"/"extraordinária": o desconto se explica
+        // pelo defeito, não é uma oportunidade de verdade (só iPhone chega aqui com
+        // defeito=true — consoles defeituosos nem entram no banco).
+        const opportunityLevel = defeito
+            ? capOpportunityLevelDefeituoso(calcularOpportunityLevel(item.price, mediaRow))
+            : calcularOpportunityLevel(item.price, mediaRow);
         // Lucro sobre a mesma referência do opportunity_level (mesmo mínimo de amostras).
         const confiavel = mediaRow && mediaRow.amostras >= 3 && mediaRow.preco_mediano != null;
         const lucroPct = confiavel ? profitPct(item.price, mediaRow.preco_mediano) : null;
@@ -1173,12 +1178,25 @@ async function fetchAdDescription(url) {
     return null;
 }
 
+// Grava o veredito no cache (classificacoes_ia), em lotes de 40, pra sobreviver mesmo
+// se o passo seguinte (atualizar/remover de anuncios_ativos) falhar no meio do caminho.
+async function cacheVeredito(coluna, urls) {
+    for (let i = 0; i < urls.length; i += 40) {
+        const { error } = await supabase
+            .from('classificacoes_ia')
+            .update({ [coluna]: true })
+            .in('url', urls.slice(i, i + 40));
+
+        if (error) throw new Error(`Erro ao gravar veredito da descrição no cache (${coluna}): ${error.message}`);
+    }
+}
+
 async function verifyHighProfitDescriptions(category) {
     // Anúncio já marcado com defeito pelo título (iPhone) fica de fora: já aparece
     // com aviso no card e não precisa gastar leitura nem Haiku.
     const { data: pendentes, error } = await supabase
         .from('anuncios_ativos')
-        .select('url, title, profit_pct')
+        .select('url, title, profit_pct, opportunity_level')
         .eq('category', category)
         .eq('defeito', false)
         .is('verified_at', null)
@@ -1202,7 +1220,11 @@ async function verifyHighProfitDescriptions(category) {
         console.warn(`  ⚠ ${semDescricao} anúncio(s) sem descrição legível agora — ficam pendentes pro próximo ciclo.`);
     }
 
-    const reprovados = [];
+    // diverge: nunca é o produto certo, sempre remove. defeito (sem diverge): mantém
+    // (com aviso) nas categorias que mantêm defeituoso, senão remove — mesma regra do
+    // defeito de título (mantemDefeituosos).
+    const divergentes = [];
+    const defeituosos = []; // { url, title, opportunity_level }
     const aprovados = [];
     for (let i = 0; i < comDescricao.length; i += DESCRIPTION_BATCH_SIZE) {
         const lote = comDescricao.slice(i, i + DESCRIPTION_BATCH_SIZE);
@@ -1212,9 +1234,12 @@ async function verifyHighProfitDescriptions(category) {
             for (const ad of lote) {
                 const v = veredictos.get(ad.url);
                 if (!v) continue; // sem resposta válida: continua pendente
-                if (v.defeito) {
-                    reprovados.push(ad.url);
-                    console.warn(`  ⚠ Descrição reprovada (${v.motivo || 'sem motivo'}): "${ad.title.slice(0, 60)}" ${ad.url}`);
+                if (v.diverge) {
+                    divergentes.push(ad.url);
+                    console.warn(`  ⚠ Descrição não bate com o título (${v.motivo || 'sem motivo'}): "${ad.title.slice(0, 60)}" ${ad.url}`);
+                } else if (v.defeito) {
+                    defeituosos.push(ad);
+                    console.warn(`  ⚠ Defeito confirmado pela descrição (${v.motivo || 'sem motivo'}): "${ad.title.slice(0, 60)}" ${ad.url}`);
                 } else {
                     aprovados.push(ad.url);
                 }
@@ -1224,19 +1249,52 @@ async function verifyHighProfitDescriptions(category) {
         }
     }
 
-    // Cache primeiro: se a remoção falhar, o veredito já está guardado e o próximo
-    // ciclo derruba o anúncio pelo caminho do cache (ver processProduct).
-    for (let i = 0; i < reprovados.length; i += 40) {
-        const { error: cacheError } = await supabase
-            .from('classificacoes_ia')
-            .update({ descricao_defeito: true })
-            .in('url', reprovados.slice(i, i + 40));
+    const mantem = mantemDefeituosos(category);
+    const defeituososMantidos = mantem ? defeituosos : [];
+    const defeituososRemovidos = mantem ? [] : defeituosos.map((ad) => ad.url);
 
-        if (cacheError) throw new Error(`Erro ao gravar veredito da descrição no cache: ${cacheError.message}`);
-    }
-    await dropDefectiveFromDatabase(reprovados);
+    // Cache primeiro: se o passo seguinte falhar no meio, o veredito já está
+    // guardado e o próximo ciclo resolve pelo caminho do cache (ver processProduct).
+    await cacheVeredito('descricao_diverge', divergentes);
+    await cacheVeredito('descricao_defeito', defeituosos.map((ad) => ad.url));
+
+    await dropDefectiveFromDatabase([...divergentes, ...defeituososRemovidos]);
 
     const nowIso = new Date().toISOString();
+
+    if (defeituososMantidos.length > 0) {
+        // Aparelho com defeito nunca é "ótima"/"extraordinária" — agrupa por nível já
+        // capado pra atualizar em lote (poucas linhas por ciclo; poucos grupos possíveis).
+        const porNivel = new Map();
+        for (const ad of defeituososMantidos) {
+            const nivel = capOpportunityLevelDefeituoso(ad.opportunity_level);
+            if (!porNivel.has(nivel)) porNivel.set(nivel, []);
+            porNivel.get(nivel).push(ad.url);
+        }
+        for (const [nivel, urls] of porNivel) {
+            for (let i = 0; i < urls.length; i += 40) {
+                const { error: defeitoError } = await supabase
+                    .from('anuncios_ativos')
+                    .update({ defeito: true, opportunity_level: nivel, verified_at: nowIso })
+                    .in('url', urls.slice(i, i + 40));
+
+                if (defeitoError) throw new Error(`Erro ao marcar anúncios com defeito confirmado: ${defeitoError.message}`);
+            }
+        }
+
+        // Os pontos de preço registrados antes assumiam aparelho sem defeito — saem da
+        // base das médias, igual ao defeito descoberto no título (ver planHistory).
+        const urlsMantidos = defeituososMantidos.map((ad) => ad.url);
+        for (let i = 0; i < urlsMantidos.length; i += 40) {
+            const { error: purgeError } = await supabase
+                .from('historico_precos')
+                .delete()
+                .in('url', urlsMantidos.slice(i, i + 40));
+
+            if (purgeError) throw new Error(`Erro ao tirar anúncio com defeito confirmado de historico_precos: ${purgeError.message}`);
+        }
+    }
+
     for (let i = 0; i < aprovados.length; i += 40) {
         const { error: okError } = await supabase
             .from('anuncios_ativos')
@@ -1246,7 +1304,10 @@ async function verifyHighProfitDescriptions(category) {
         if (okError) throw new Error(`Erro ao marcar anúncios verificados: ${okError.message}`);
     }
 
-    console.log(`  Descrições: ${aprovados.length} aprovada(s), ${reprovados.length} reprovada(s) e removida(s).`);
+    console.log(
+        `  Descrições: ${aprovados.length} aprovada(s) | ${defeituososMantidos.length} com defeito confirmado (mantida(s), com aviso) | ` +
+        `${defeituososRemovidos.length + divergentes.length} removida(s) (${divergentes.length} não batem com o título, ${defeituososRemovidos.length} com defeito).`
+    );
 }
 
 // ------------------------------------------------------------------
@@ -1266,13 +1327,36 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
 
     console.log('2. Consultando cache de classificação...');
     const { cached: cachedRaw, toClassify } = await splitCachedAndNew(rawItems);
-    // Anúncio reprovado antes pela leitura da descrição não volta pro banco.
-    const reprovadosDescricao = cachedRaw.filter((i) => i.descricao_defeito === true).map((i) => i.url);
-    await dropDefectiveFromDatabase(reprovadosDescricao);
-    const cached = withScrapeCondition(cachedRaw.filter((i) => i.descricao_defeito !== true), condition);
+
+    // Divergência confirmada pela descrição (ciclo anterior): nunca é o produto certo
+    // — sempre sai do banco e não volta.
+    const divergentesDescricao = cachedRaw.filter((i) => i.descricao_diverge === true).map((i) => i.url);
+    // Defeito confirmado pela descrição (ciclo anterior): nas categorias que mantêm
+    // defeituoso (iPhone) o anúncio fica, com aviso — igual ao defeito de título. Nas
+    // demais (consoles), sai do banco como sempre.
+    const defeitoDescricaoUrls = cachedRaw.filter((i) => i.descricao_defeito === true).map((i) => i.url);
+    const mantemDefeitoDescricao = mantemDefeituosos(category);
+    const dropDescricao = mantemDefeitoDescricao
+        ? divergentesDescricao
+        : [...divergentesDescricao, ...defeitoDescricaoUrls];
+    await dropDefectiveFromDatabase(dropDescricao);
+
+    const dropSet = new Set(dropDescricao);
+    const forcaDefeitoSet = new Set(mantemDefeitoDescricao ? defeitoDescricaoUrls : []);
+    const cached = withScrapeCondition(
+        cachedRaw
+            .filter((i) => !dropSet.has(i.url))
+            // defeito_ia força o item.defeito final (ver processValidItems) mesmo com
+            // título limpo: o defeito foi confirmado antes pela descrição, não pelo título.
+            .map((i) => (forcaDefeitoSet.has(i.url) ? { ...i, defeito_ia: true } : i)),
+        condition
+    );
     console.log(`   ${cached.length} já em cache, ${toClassify.length} novos a classificar.`);
-    if (reprovadosDescricao.length > 0) {
-        console.log(`   ${reprovadosDescricao.length} anúncio(s) ignorado(s): descrição já reprovada em ciclo anterior.`);
+    if (dropDescricao.length > 0) {
+        console.log(`   ${dropDescricao.length} anúncio(s) removido(s): descrição já reprovada em ciclo anterior.`);
+    }
+    if (forcaDefeitoSet.size > 0) {
+        console.log(`   ${forcaDefeitoSet.size} anúncio(s) voltam marcados com defeito (confirmado pela descrição em ciclo anterior).`);
     }
 
     let newlyClassified = [];
