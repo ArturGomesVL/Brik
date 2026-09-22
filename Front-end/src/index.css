@@ -161,15 +161,17 @@ body {
   animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* Navbar ao abrir a calculadora (tela cheia, sem barra): desce e some. Ao voltar
-   para o dashboard, faz o caminho inverso. O nome "navbar" só existe durante
-   essas navegações (ver Navbar.jsx). */
+/* Navbar ao abrir a conta da calculadora (tela cheia, sem barra): desce e some.
+   Na volta ela reaparece imediatamente. O nome "navbar" só existe durante essas
+   navegações (ver Navbar.jsx). */
 @keyframes navbar-out {
   to { transform: translateY(calc(100% + 1rem)); opacity: 0; }
 }
 
+/* Na volta a barra sobe junto com a tela: sem espera para começar e com um
+   percurso curto, para ela não passar metade do tempo fora do campo de visão. */
 @keyframes navbar-in {
-  from { transform: translateY(calc(100% + 1rem)); opacity: 0; }
+  from { transform: translateY(60%); opacity: 0; }
 }
 
 ::view-transition-old(navbar) {
@@ -177,7 +179,7 @@ body {
 }
 
 ::view-transition-new(navbar) {
-  animation: navbar-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: navbar-in 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

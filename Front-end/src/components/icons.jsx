@@ -80,6 +80,12 @@ export const UserIcon = (props) => (
   </svg>
 )
 
+export const ChevronRightIcon = (props) => (
+  <svg {...base} strokeWidth={2.6} {...props}>
+    <path d="m9 5 7 7-7 7" />
+  </svg>
+)
+
 export const ArrowLeftIcon = (props) => (
   <svg {...base} strokeWidth={2.2} {...props}>
     <path d="M19 12H5M11 6l-6 6 6 6" />

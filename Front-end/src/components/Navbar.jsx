@@ -27,11 +27,11 @@ function Navbar() {
   const navigate = useNavigate()
   const activeIndex = getActiveIndex(pathname)
   const [pressed, setPressed] = useState(false)
-  // A calculadora é tela cheia, sem navbar. Só nas navegações de/para ela a barra
-  // ganha um view-transition-name, e o index.css a faz descer ao sair e subir ao
-  // voltar. Nas trocas de aba o nome fica de fora, para não transformar a barra
+  // A conta da calculadora é tela cheia, sem navbar. Só nas navegações de/para ela
+  // a barra ganha um view-transition-name, e o index.css a faz descer ao sair e
+  // subir ao voltar. Nas trocas de aba o nome fica de fora, para não transformar a barra
   // em imagem durante a transição e esconder a bolha deslizando.
-  const toCalculator = useViewTransitionState('/calculadora')
+  const toCalculator = useViewTransitionState('/calculadora/nova')
 
   const rowRef = useRef(null)
   const lensRef = useRef(null)

@@ -131,9 +131,9 @@ function Calculadora() {
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-surface pb-6 text-strong shadow-xl">
       <header className="sticky top-0 z-40 flex items-center gap-2 bg-surface px-4 py-3">
         <Link
-          to="/dashboard"
+          to="/calculadora"
           viewTransition
-          aria-label="Voltar para o dashboard"
+          aria-label="Voltar"
           className="-ml-1 flex h-9 w-9 items-center justify-center rounded-xl text-strong transition-colors hover:bg-surface-raise"
         >
           <ArrowLeftIcon className="h-5 w-5" />
