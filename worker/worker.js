@@ -32,6 +32,14 @@ const {
     withScrapeCondition,
 } = require('./produtos');
 const { defeitoNoTitulo, mantemDefeituosos, planHistory } = require('./defeito');
+const {
+    LUCRO_MIN_VERIFICACAO,
+    profitPct,
+    extractDescription,
+    VERIFICACAO_SYSTEM_PROMPT,
+    buildVerificationMessage,
+    parseVerdicts,
+} = require('./descricao');
 
 // ------------------------------------------------------------------
 // Configuração — tudo via variáveis de ambiente, nunca hardcoded
@@ -82,6 +90,15 @@ const OLX_PROBE_TIMEOUT_MS = 15000;
 const OLX_PROBE_MAX = 250;
 const BROWSER_UA =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// Anúncio com lucro >= LUCRO_MIN_VERIFICACAO% tem a descrição lida no OLX e
+// julgada pelo Haiku; com defeito (ou algo que não é o produto), é removido.
+// VERIFY_DESCRIPTIONS=false desliga a etapa.
+const VERIFY_DESCRIPTIONS = process.env.VERIFY_DESCRIPTIONS !== 'false';
+const DESCRIPTION_BATCH_SIZE = 10;
+// Máximo de anúncios verificados por ciclo; o excedente fica pendente
+// (verified_at nulo) e é pego nos ciclos seguintes, maior lucro primeiro.
+const DESCRIPTION_MAX_PER_CYCLE = 60;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 
@@ -329,7 +346,7 @@ async function queryWithRetry(chunk, maxRetries = 3) {
         try {
             const { data, error } = await supabase
                 .from('classificacoes_ia')
-                .select('url, category, category_match, variant, condition, defeito')
+                .select('url, category, category_match, variant, condition, defeito, descricao_defeito')
                 .in('url', chunk);
 
             if (error) throw new Error(error.message, { cause: error });
@@ -382,6 +399,34 @@ async function splitCachedAndNew(items) {
 
     return { cached, toClassify };
 }
+// Chamada única ao Haiku (classificação e verificação de descrição): devolve o texto da resposta.
+async function callHaiku(systemPrompt, userContent) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+            model: HAIKU_MODEL,
+            max_tokens: 4096,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userContent }],
+        }),
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Claude API error: ${response.status} - ${errText}`);
+    }
+
+    const data = await response.json();
+    return data.content
+        .map((block) => (block.type === 'text' ? block.text : ''))
+        .join('');
+}
+
 // ------------------------------------------------------------------
 // Passo 3 — Classificar itens novos em lote via Claude Haiku
 // ------------------------------------------------------------------
@@ -434,30 +479,7 @@ Devolva UM objeto para CADA título da lista, na mesma ordem, sem pular nenhum. 
 
 Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem markdown, sem crases.`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-            model: HAIKU_MODEL,
-            max_tokens: 4096,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: listForPrompt }],
-        }),
-    });
-
-    if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Claude API error: ${response.status} - ${errText}`);
-    }
-
-    const data = await response.json();
-    const rawText = data.content
-        .map((block) => (block.type === 'text' ? block.text : ''))
-        .join('');
+    const rawText = await callHaiku(systemPrompt, listForPrompt);
 
     const cleanText = rawText.replace(/```json|```/g, '').trim();
 
@@ -744,6 +766,9 @@ async function processValidItems(validItems, category, mediaMap) {
         }
 
         const opportunityLevel = calcularOpportunityLevel(item.price, mediaRow);
+        // Lucro sobre a mesma referência do opportunity_level (mesmo mínimo de amostras).
+        const confiavel = mediaRow && mediaRow.amostras >= 3 && mediaRow.preco_mediano != null;
+        const lucroPct = confiavel ? profitPct(item.price, mediaRow.preco_mediano) : null;
 
         const anuncioRow = {
             url: item.url,
@@ -756,6 +781,7 @@ async function processValidItems(validItems, category, mediaMap) {
             location_neighborhood: item.location,
             image_url: item.imageUrl,
             opportunity_level: opportunityLevel,
+            profit_pct: lucroPct,
             defeito,
             strikes: 0,
             last_seen_at: nowIso,
@@ -1107,6 +1133,123 @@ async function dropDefectiveFromDatabase(urls, chunkSize = 40) {
 }
 
 // ------------------------------------------------------------------
+// Verificação da descrição — anúncios com lucro >= LUCRO_MIN_VERIFICACAO% e
+// ainda não verificados: abre o anúncio no OLX, lê a descrição e o Haiku diz se
+// há defeito ou algo que não condiz com o produto. Reprovado sai do banco (e
+// leva o histórico de preço); aprovado ganha verified_at. O que não deu pra
+// verificar (OLX bloqueou, Haiku falhou) segue pendente pro próximo ciclo.
+// ------------------------------------------------------------------
+
+// Baixa a página do anúncio via curl (mesmo motivo do curlStatus: o Cloudflare
+// do OLX barra o fetch). Devolve { status, body }, ou null se o curl falhou.
+function curlPage(url) {
+    return new Promise((resolve) => {
+        execFile(
+            'curl',
+            ['-s', '-L', '-A', BROWSER_UA, '--max-time', String(Math.ceil(OLX_PROBE_TIMEOUT_MS / 1000)),
+                '-w', '\n__STATUS__%{http_code}', url],
+            { timeout: OLX_PROBE_TIMEOUT_MS + 5000, windowsHide: true, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' },
+            (err, stdout) => {
+                if (err) return resolve(null);
+                const m = /\n__STATUS__(\d{3})$/.exec(stdout);
+                if (!m) return resolve(null);
+                resolve({ status: Number(m[1]), body: stdout.slice(0, m.index) });
+            }
+        );
+    });
+}
+
+// Descrição do anúncio, ou null se não deu pra ler (bloqueio 403 do Cloudflare
+// aparece de forma intermitente, em ~1 de cada 4 requisições: repetir costuma passar).
+async function fetchAdDescription(url) {
+    const id = extractAdId(url);
+    if (!id) return null;
+    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+        const page = await curlPage(`https://www.olx.com.br/vi/${id}`);
+        if (page && page.status === 200) return extractDescription(page.body);
+        if (page && page.status !== 403) return null; // fora do ar etc.: os strikes cuidam
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    return null;
+}
+
+async function verifyHighProfitDescriptions(category) {
+    // Anúncio já marcado com defeito pelo título (iPhone) fica de fora: já aparece
+    // com aviso no card e não precisa gastar leitura nem Haiku.
+    const { data: pendentes, error } = await supabase
+        .from('anuncios_ativos')
+        .select('url, title, profit_pct')
+        .eq('category', category)
+        .eq('defeito', false)
+        .is('verified_at', null)
+        .gte('profit_pct', LUCRO_MIN_VERIFICACAO)
+        .order('profit_pct', { ascending: false })
+        .limit(DESCRIPTION_MAX_PER_CYCLE);
+
+    if (error) throw new Error(`Erro ao buscar anúncios pendentes de verificação: ${error.message}`);
+    if (pendentes.length === 0) return;
+
+    console.log(`  Verificando a descrição de ${pendentes.length} anúncio(s) com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
+
+    const comDescricao = [];
+    let semDescricao = 0;
+    for (let i = 0; i < pendentes.length; i += OLX_PROBE_CONCURRENCY) {
+        const grupo = pendentes.slice(i, i + OLX_PROBE_CONCURRENCY);
+        const textos = await Promise.all(grupo.map((ad) => fetchAdDescription(ad.url)));
+        grupo.forEach((ad, j) => (textos[j] ? comDescricao.push({ ...ad, description: textos[j] }) : semDescricao++));
+    }
+    if (semDescricao > 0) {
+        console.warn(`  ⚠ ${semDescricao} anúncio(s) sem descrição legível agora — ficam pendentes pro próximo ciclo.`);
+    }
+
+    const reprovados = [];
+    const aprovados = [];
+    for (let i = 0; i < comDescricao.length; i += DESCRIPTION_BATCH_SIZE) {
+        const lote = comDescricao.slice(i, i + DESCRIPTION_BATCH_SIZE);
+        try {
+            const rawText = await callHaiku(VERIFICACAO_SYSTEM_PROMPT, buildVerificationMessage(lote));
+            const veredictos = parseVerdicts(rawText, lote);
+            for (const ad of lote) {
+                const v = veredictos.get(ad.url);
+                if (!v) continue; // sem resposta válida: continua pendente
+                if (v.defeito) {
+                    reprovados.push(ad.url);
+                    console.warn(`  ⚠ Descrição reprovada (${v.motivo || 'sem motivo'}): "${ad.title.slice(0, 60)}" ${ad.url}`);
+                } else {
+                    aprovados.push(ad.url);
+                }
+            }
+        } catch (err) {
+            console.error(`  Erro ao verificar lote de descrições (segue pendente):`, err.message);
+        }
+    }
+
+    // Cache primeiro: se a remoção falhar, o veredito já está guardado e o próximo
+    // ciclo derruba o anúncio pelo caminho do cache (ver processProduct).
+    for (let i = 0; i < reprovados.length; i += 40) {
+        const { error: cacheError } = await supabase
+            .from('classificacoes_ia')
+            .update({ descricao_defeito: true })
+            .in('url', reprovados.slice(i, i + 40));
+
+        if (cacheError) throw new Error(`Erro ao gravar veredito da descrição no cache: ${cacheError.message}`);
+    }
+    await dropDefectiveFromDatabase(reprovados);
+
+    const nowIso = new Date().toISOString();
+    for (let i = 0; i < aprovados.length; i += 40) {
+        const { error: okError } = await supabase
+            .from('anuncios_ativos')
+            .update({ verified_at: nowIso })
+            .in('url', aprovados.slice(i, i + 40));
+
+        if (okError) throw new Error(`Erro ao marcar anúncios verificados: ${okError.message}`);
+    }
+
+    console.log(`  Descrições: ${aprovados.length} aprovada(s), ${reprovados.length} reprovada(s) e removida(s).`);
+}
+
+// ------------------------------------------------------------------
 // Execução principal
 // ------------------------------------------------------------------
 // Processa UM produto já raspado: cache → Haiku → regras de variant → médias →
@@ -1123,8 +1266,14 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
 
     console.log('2. Consultando cache de classificação...');
     const { cached: cachedRaw, toClassify } = await splitCachedAndNew(rawItems);
-    const cached = withScrapeCondition(cachedRaw, condition);
+    // Anúncio reprovado antes pela leitura da descrição não volta pro banco.
+    const reprovadosDescricao = cachedRaw.filter((i) => i.descricao_defeito === true).map((i) => i.url);
+    await dropDefectiveFromDatabase(reprovadosDescricao);
+    const cached = withScrapeCondition(cachedRaw.filter((i) => i.descricao_defeito !== true), condition);
     console.log(`   ${cached.length} já em cache, ${toClassify.length} novos a classificar.`);
+    if (reprovadosDescricao.length > 0) {
+        console.log(`   ${reprovadosDescricao.length} anúncio(s) ignorado(s): descrição já reprovada em ciclo anterior.`);
+    }
 
     let newlyClassified = [];
     if (toClassify.length > 0) {
@@ -1161,6 +1310,11 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
 
         console.log('5. Gravando em anuncios_ativos e historico_precos...');
         await processValidItems(validItems, category, mediaMap);
+
+        if (VERIFY_DESCRIPTIONS) {
+            console.log(`5b. Verificando descrição dos anúncios com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
+            await verifyHighProfitDescriptions(category);
+        }
     }
 
     return { total: rawItems.length, gravados: validItems.length };
@@ -1251,4 +1405,4 @@ if (require.main === module) {
         });
 }
 
-module.exports = { classifyBatch, fetchAllActiveRows, extractAdId };
+module.exports = { classifyBatch, fetchAllActiveRows, extractAdId, fetchAdDescription };
