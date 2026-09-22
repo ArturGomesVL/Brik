@@ -32,6 +32,13 @@ function Navbar() {
   // subir ao voltar. Nas trocas de aba o nome fica de fora, para não transformar a barra
   // em imagem durante a transição e esconder a bolha deslizando.
   const toCalculator = useViewTransitionState('/calculadora/nova')
+  // A barra só vira imagem (view-transition-name) quando está SAINDO. Na volta
+  // ela entra viva, animada por CSS: dentro de uma view transition o vidro perde
+  // o fundo que ele borra, e sobrava só o "+" azul aparecendo sozinho.
+  // Nasce true se a barra montou no meio da transição (ou seja, ela é a que está
+  // chegando) e volta a false assim que a transição termina.
+  const [chegando, setChegando] = useState(toCalculator)
+  if (chegando && !toCalculator) setChegando(false)
 
   const rowRef = useRef(null)
   const lensRef = useRef(null)
@@ -256,8 +263,8 @@ function Navbar() {
   return (
     <nav
       aria-label="Navegação principal"
-      className="fixed inset-x-0 bottom-4 z-50 mx-auto w-[calc(100%-2rem)] max-w-sm"
-      style={toCalculator ? { viewTransitionName: 'navbar' } : undefined}
+      className="navbar-enter fixed inset-x-0 bottom-4 z-50 mx-auto w-[calc(100%-2rem)] max-w-sm"
+      style={toCalculator && !chegando ? { viewTransitionName: 'navbar' } : undefined}
     >
       <div
         ref={rowRef}

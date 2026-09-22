@@ -168,23 +168,32 @@ body {
   to { transform: translateY(calc(100% + 1rem)); opacity: 0; }
 }
 
-/* Na volta a barra sobe junto com a tela: sem espera para começar e com um
-   percurso curto, para ela não passar metade do tempo fora do campo de visão. */
+/* Na volta a barra sobe junto com a tela, sem espera para começar.
+   Anima `bottom`, e não transform/opacity: as duas isolam o elemento, e aí o
+   backdrop-filter do vidro perde a página que ele borra — o fundo da barra
+   sumiria e sobraria só o "+". Por isso a animação roda aqui, no elemento vivo,
+   e não na view transition (onde a barra vira imagem e o vidro some igual). */
 @keyframes navbar-in {
-  from { transform: translateY(60%); opacity: 0; }
+  from { bottom: -4.5rem; }
+  to { bottom: 1rem; }
+}
+
+.navbar-enter {
+  animation: navbar-in 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 ::view-transition-old(navbar) {
   animation: navbar-out 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
+/* A barra que chega nunca recebe o nome, então não há par "new" a animar. */
 ::view-transition-new(navbar) {
-  animation: navbar-in 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(navbar),
-  ::view-transition-new(navbar) {
+  .navbar-enter,
+  ::view-transition-old(navbar) {
     animation: none;
   }
 }
