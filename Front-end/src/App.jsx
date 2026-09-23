@@ -5,6 +5,8 @@ import ProductDetail from './pages/ProductDetail.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import CalculadoraHome from './pages/CalculadoraHome.jsx'
 import Calculadora from './pages/Calculadora.jsx'
+import MeusProdutos from './pages/MeusProdutos.jsx'
+import AdicionarProduto from './pages/AdicionarProduto.jsx'
 import EmBreve from './pages/EmBreve.jsx'
 
 const router = createBrowserRouter([
@@ -18,12 +20,15 @@ const router = createBrowserRouter([
       { path: '/calculadora', element: <CalculadoraHome /> },
       { path: '/salvos', element: <EmBreve title="Salvos" /> },
       { path: '/perfil', element: <EmBreve title="Meu Perfil" /> },
-      { path: '/adicionar', element: <EmBreve title="Adicionar" /> },
+      // O "+" da navbar abre o estoque do usuário.
+      { path: '/adicionar', element: <MeusProdutos /> },
     ],
   },
   // Fora do Layout de propósito: a conta em si é tela cheia, sem navbar. Entra
   // pelo card "Calcular novo Brique" e sai pela seta do header.
   { path: '/calculadora/nova', element: <Calculadora /> },
+  // Formulário de entrada no estoque: também tela cheia, sem navbar.
+  { path: '/adicionar/novo', element: <AdicionarProduto /> },
 ])
 
 function App() {

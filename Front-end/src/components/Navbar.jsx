@@ -31,7 +31,9 @@ function Navbar() {
   // a barra ganha um view-transition-name, e o index.css a faz descer ao sair e
   // subir ao voltar. Nas trocas de aba o nome fica de fora, para não transformar a barra
   // em imagem durante a transição e esconder a bolha deslizando.
-  const toCalculator = useViewTransitionState('/calculadora/nova')
+  const paraCalculadora = useViewTransitionState('/calculadora/nova')
+  const paraNovoProduto = useViewTransitionState('/adicionar/novo')
+  const toCalculator = paraCalculadora || paraNovoProduto
   // A barra só vira imagem (view-transition-name) quando está SAINDO. Na volta
   // ela entra viva, animada por CSS: dentro de uma view transition o vidro perde
   // o fundo que ele borra, e sobrava só o "+" azul aparecendo sozinho.
