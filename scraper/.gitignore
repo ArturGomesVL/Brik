@@ -1,0 +1,6 @@
+﻿# JSONs gerados pelo scraper (podem chegar a ~1 MB cada)
+*.json
+
+# Cache do Python
+__pycache__/
+*.pyc
