@@ -72,6 +72,7 @@ function Perfil() {
 
           <Link
             to="/perfil/editar"
+            viewTransition
             className="mt-2.5 rounded-lg border border-brik/40 px-6 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-paper"
           >
             Editar perfil

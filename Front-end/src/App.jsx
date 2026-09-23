@@ -22,7 +22,6 @@ const router = createBrowserRouter([
       { path: '/calculadora', element: <CalculadoraHome /> },
       { path: '/salvos', element: <Salvos /> },
       { path: '/perfil', element: <Perfil /> },
-      { path: '/perfil/editar', element: <EditarPerfil /> },
       // O "+" da navbar abre o estoque do usuário.
       { path: '/adicionar', element: <MeusProdutos /> },
     ],
@@ -32,6 +31,8 @@ const router = createBrowserRouter([
   { path: '/calculadora/nova', element: <Calculadora /> },
   // Formulário de entrada no estoque: também tela cheia, sem navbar.
   { path: '/adicionar/novo', element: <AdicionarProduto /> },
+  // Edição do perfil: tela cheia, sem navbar. Sai pela seta do header.
+  { path: '/perfil/editar', element: <EditarPerfil /> },
 ])
 
 function App() {

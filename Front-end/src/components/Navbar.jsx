@@ -33,7 +33,8 @@ function Navbar() {
   // em imagem durante a transição e esconder a bolha deslizando.
   const paraCalculadora = useViewTransitionState('/calculadora/nova')
   const paraNovoProduto = useViewTransitionState('/adicionar/novo')
-  const toCalculator = paraCalculadora || paraNovoProduto
+  const paraEditarPerfil = useViewTransitionState('/perfil/editar')
+  const toCalculator = paraCalculadora || paraNovoProduto || paraEditarPerfil
   // A barra só vira imagem (view-transition-name) quando está SAINDO. Na volta
   // ela entra viva, animada por CSS: dentro de uma view transition o vidro perde
   // o fundo que ele borra, e sobrava só o "+" azul aparecendo sozinho.

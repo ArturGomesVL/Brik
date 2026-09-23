@@ -15,7 +15,8 @@ import {
 } from '../components/icons.jsx'
 
 // "Editar perfil", aberto pelo botão do Meu Perfil. Ainda não existe login,
-// então os campos começam vazios e salvar só volta para o perfil.
+// então os campos começam vazios e salvar só volta para o perfil. Tela cheia,
+// sem navbar (a rota fica fora do Layout).
 
 const VAZIO = {
   nome: '',
@@ -88,12 +89,12 @@ function EditarPerfil() {
   function salvar(event) {
     event.preventDefault()
     // TODO: gravar no perfil do usuário quando existir login.
-    navigate('/perfil')
+    navigate('/perfil', { viewTransition: true })
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-white pb-28 shadow-xl">
-      <BrandHeader />
+    <div className="mx-auto min-h-screen w-full max-w-md bg-white pb-10 shadow-xl">
+      <BrandHeader voltarPara="/perfil" />
 
       <h1 className="sr-only">Editar perfil</h1>
 
