@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeftIcon } from '../components/icons.jsx'
 import { Card } from '../components/dashboard/ui.jsx'
 import { EMPTY, FIELDS, press, resultado } from '../lib/calc.js'
@@ -53,12 +53,13 @@ function Equilibrio({ lucro, margem }) {
 }
 
 function Calculadora() {
+  const navigate = useNavigate()
   const [values, setValues] = useState(EMPTY)
   const [active, setActive] = useState(0)
   const r = resultado(values)
   const field = FIELDS[active].key
   // No último campo (preço de venda) o botão azul deixa de avançar e passa a
-  // oferecer o próximo passo natural: guardar o item no estoque.
+  // oferecer o próximo passo natural: dar um nome à conta e guardá-la.
   const isLast = active === FIELDS.length - 1
 
   // Folha "nome do brique", aberta pelo botão azul no último campo.
@@ -91,10 +92,11 @@ function Calculadora() {
   function adicionar(event) {
     event.preventDefault()
     if (!nome.trim()) return
-    // TODO: gravar { nome, ...values } no estoque. Ainda não existe onde guardar
-    // (não há tabela de estoque no Supabase); por enquanto só fecha e zera.
+    // TODO: gravar { nome, ...values } junto dos cálculos salvos. Ainda não
+    // existe onde guardar; por enquanto fecha, zera e volta para a calculadora.
     fecharFolha()
     limpar()
+    navigate('/calculadora')
   }
 
   // Teclado físico: no desktop a calculadora responde sem o mouse.
@@ -228,12 +230,12 @@ function Calculadora() {
             className={`flex items-center justify-center rounded-2xl tabular-nums transition-colors ${TONE[tone]}`}
           >
             {key === 'next' && isLast ? (
-              // Menor e sem o espaçamento entre letras: numa tecla de 1/4 da largura,
-              // "ADICIONAR NO" precisa caber inteiro na primeira linha.
-              <span className="whitespace-nowrap text-[10px] tracking-normal">
-                Adicionar no
+              // Sem o espaçamento entre letras: numa tecla de 1/4 da largura,
+              // "SALVAR" e "CÁLCULO" precisam caber inteiros, um por linha.
+              <span className="whitespace-nowrap tracking-normal">
+                Salvar
                 <br />
-                Estoque
+                cálculo
               </span>
             ) : (
               label
