@@ -1417,6 +1417,36 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
     return { total: rawItems.length, gravados: validItems.length };
 }
 
+// Raspa, valida e grava UM produto; devolve a linha do resumo do ciclo. Erro na
+// raspagem (antes de gravar qualquer coisa) sai com err.naRaspagem = true.
+async function rodarProduto(produto, { headless, dryRun, tracker }) {
+    const nome = rotulo(produto);
+    let payload;
+    let dados;
+    try {
+        console.log('1. Rodando script Python de raspagem...');
+        payload = await runPythonScraper(produto, { headless });
+        dados = mapAndValidateScraperOutput(payload);
+    } catch (err) {
+        err.naRaspagem = true;
+        throw err;
+    }
+    const { category, items, seenUrls, defeitoUrls, linksOlx, condition } = dados;
+    // JSON de versão antiga do scraper não tem o campo: assume completo.
+    const completo = payload.completo !== false;
+    console.log(
+        `   ${items.length} itens válidos raspados (categoria: ${category}, ` +
+        `${payload.paginas_raspadas ?? '?'}/${payload.paginas_planejadas ?? '?'} páginas, ` +
+        `completo=${completo}).`
+    );
+    tracker.record(produto, category, seenUrls, completo);
+
+    if (dryRun) return { nome, ok: true, detalhe: `${items.length} itens (dry-run)`, completo };
+
+    const r = await processProduct(category, items, condition, defeitoUrls, linksOlx);
+    return { nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo };
+}
+
 // Ciclo completo: raspa e grava cada produto de PRODUTOS em sequência — quando
 // um termina, o próximo já começa — e só no fim aplica os strikes.
 //
@@ -1441,37 +1471,40 @@ async function run() {
         `${parcial ? ` [${opts.primeiras ? 'primeiras' : 'últimas'} ${opts.paginas} página(s): raspagem parcial, sem strikes]` : ''}`
     );
 
+    // Um produto com problema não derruba os outros; a categoria dele fica sem
+    // strike neste ciclo, pois a raspagem dela ficou incompleta.
+    const registrarFalha = (produto, err) => {
+        console.error(`\nFalha no produto "${rotulo(produto)}":`, err.message);
+        if (err.cause) console.error('Causa raiz:', err.cause);
+        tracker.fail(produto, err.message);
+        resumo.push({ nome: rotulo(produto), ok: false, detalhe: err.message });
+    };
+
+    // Raspagem que falhou (no Actions, o primeiro produto do ciclo costuma estourar
+    // o timeout na página 1 enquanto os seguintes passam) é repetida uma vez no fim
+    // do ciclo, com um Chrome novo. Só a raspagem: nessa etapa nada foi gravado
+    // ainda, então repetir não tem efeito colateral.
+    const ctx = { headless, dryRun: opts.dryRun, tracker };
+    const repetir = [];
     for (const [i, produto] of selecionados.entries()) {
-        const nome = rotulo(produto);
-        console.log(`\n=== [${i + 1}/${selecionados.length}] ${nome} ===`);
-
+        console.log(`\n=== [${i + 1}/${selecionados.length}] ${rotulo(produto)} ===`);
         try {
-            console.log('1. Rodando script Python de raspagem...');
-            const payload = await runPythonScraper(produto, { headless });
-            const { category, items, seenUrls, defeitoUrls, linksOlx, condition } = mapAndValidateScraperOutput(payload);
-            // JSON de versão antiga do scraper não tem o campo: assume completo.
-            const completo = payload.completo !== false;
-            console.log(
-                `   ${items.length} itens válidos raspados (categoria: ${category}, ` +
-                `${payload.paginas_raspadas ?? '?'}/${payload.paginas_planejadas ?? '?'} páginas, ` +
-                `completo=${completo}).`
-            );
-            tracker.record(produto, category, seenUrls, completo);
-
-            if (opts.dryRun) {
-                resumo.push({ nome, ok: true, detalhe: `${items.length} itens (dry-run)`, completo });
+            resumo.push(await rodarProduto(produto, ctx));
+        } catch (err) {
+            if (!err.naRaspagem) {
+                registrarFalha(produto, err);
                 continue;
             }
-
-            const r = await processProduct(category, items, condition, defeitoUrls, linksOlx);
-            resumo.push({ nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo });
+            console.error(`\nFalha na raspagem de "${rotulo(produto)}" (nova tentativa no fim do ciclo):`, err.message);
+            repetir.push(produto);
+        }
+    }
+    for (const produto of repetir) {
+        console.log(`\n=== [nova tentativa] ${rotulo(produto)} ===`);
+        try {
+            resumo.push(await rodarProduto(produto, ctx));
         } catch (err) {
-            // Um produto com problema não derruba os outros; a categoria dele
-            // fica sem strike neste ciclo, pois a raspagem dela ficou incompleta.
-            console.error(`\nFalha no produto "${nome}":`, err.message);
-            if (err.cause) console.error('Causa raiz:', err.cause);
-            tracker.fail(produto, err.message);
-            resumo.push({ nome, ok: false, detalhe: err.message });
+            registrarFalha(produto, err);
         }
     }
 
