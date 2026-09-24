@@ -2,8 +2,9 @@ name: Raspagem completa
 
 on:
   schedule:
-    # 07h em Recife (UTC-3) = 10h UTC, uma vez por dia
-    - cron: '0 10 * * *'
+    # 07h17 em Recife (UTC-3) = 10h17 UTC, uma vez por dia (minuto 17 e não 00:
+    # agendamento na hora cheia é o que o GitHub mais atrasa ou descarta)
+    - cron: '17 10 * * *'
   workflow_dispatch:
     inputs:
       ciclo_completo:

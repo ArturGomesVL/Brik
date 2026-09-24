@@ -2,9 +2,10 @@ name: Raspagem 5 primeiras páginas
 
 on:
   schedule:
-    # 09h, 11h, ..., 23h em Recife (UTC-3) = 12h, 14h, ..., 02h UTC.
-    # A raspagem completa roda às 07h; de 00h às 07h nada roda.
-    - cron: '0 0,2,12,14,16,18,20,22 * * *'
+    # 09h17, 11h17, ..., 23h17 em Recife (UTC-3) = 12h17, 14h17, ..., 02h17 UTC.
+    # A raspagem completa roda às 07h17; de 00h às 07h nada roda. Minuto 17 e não
+    # 00: agendamento na hora cheia é o que o GitHub mais atrasa ou descarta.
+    - cron: '17 0,2,12,14,16,18,20,22 * * *'
   workflow_dispatch:
     inputs:
       buscas:
