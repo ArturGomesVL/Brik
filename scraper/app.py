@@ -35,6 +35,7 @@ ESTADO       = 'pe'        # sigla do estado
 CATEGORIA    = 'celulares' # 'celulares' ou 'games'
 CONDICAO     = 'usado'     # 'novo', 'usado' ou 'defeito'
 PAGINAS      = 100    # quantas páginas raspar (None = só a 1ª)
+PRIMEIRAS    = False  # True: as PAGINAS primeiras (mais recentes) em vez das últimas
 
 # Pasta onde cada JSON de execução é salvo.
 # Usa o diretório do próprio script para funcionar corretamente
@@ -376,14 +377,20 @@ def main():
         logger.warning('Não foi possível detectar a última página via paginação. Usando página 1 como ponto de partida.')
         ultima_pagina = 1
 
-    # Respeita o limite configurado em PAGINAS
-    pagina_inicio = ultima_pagina
-    pagina_fim    = max(1, ultima_pagina - paginas_limite + 1)
+    # Respeita o limite configurado em PAGINAS. As duas janelas são percorridas
+    # de trás pra frente (ver o loop abaixo).
+    if PRIMEIRAS:
+        pagina_inicio = min(paginas_limite, ultima_pagina)
+        pagina_fim    = 1
+    else:
+        pagina_inicio = ultima_pagina
+        pagina_fim    = max(1, ultima_pagina - paginas_limite + 1)
     paginas_total = pagina_inicio - pagina_fim + 1
 
     logger.info(
         f'Iniciando: busca="{BUSCA}" categoria={CATEGORIA} condicao={CONDICAO} '
         f'ultima_pagina={ultima_pagina} raspando {paginas_total} pagina(s) '
+        f'{"primeiras " if PRIMEIRAS else ""}'
         f'({pagina_inicio} -> {pagina_fim})'
     )
 
@@ -458,6 +465,8 @@ def ler_argumentos() -> argparse.Namespace:
     p.add_argument('--categoria', choices=list(CATEGORIAS), help='categoria do OLX')
     p.add_argument('--condicao', choices=list(CONDICOES), help='condição do produto')
     p.add_argument('--paginas', type=int, help='quantas páginas raspar')
+    p.add_argument('--primeiras', action='store_true',
+                   help='raspa as --paginas PRIMEIRAS páginas (mais recentes) em vez das últimas')
     p.add_argument('--headless', action='store_true', help='roda sem abrir janela')
     return p.parse_args()
 
@@ -474,6 +483,8 @@ if __name__ == '__main__':
         CONDICAO = _args.condicao
     if _args.paginas is not None:
         PAGINAS = _args.paginas
+    if _args.primeiras:
+        PRIMEIRAS = True
     if _args.headless:
         HEADLESS = True
     main()

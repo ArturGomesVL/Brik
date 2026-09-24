@@ -1,9 +1,9 @@
-name: Raspagem Brik
+name: Raspagem completa
 
 on:
   schedule:
-    # 07h–21h em Recife (UTC-3), de 2 em 2 horas = 10h–00h UTC
-    - cron: '0 0,10,12,14,16,18,20,22 * * *'
+    # 07h em Recife (UTC-3) = 10h UTC, uma vez por dia
+    - cron: '0 10 * * *'
   workflow_dispatch:
     inputs:
       ciclo_completo:
@@ -15,7 +15,7 @@ on:
         type: string
         default: 'xbox'
       paginas:
-        description: 'Máximo de páginas por produto (raspagem parcial, sem strikes)'
+        description: 'Máximo de páginas por produto, contando da última (raspagem parcial, sem strikes)'
         type: string
         default: '1'
       dry_run:
@@ -23,57 +23,19 @@ on:
         type: boolean
         default: false
 
-# Duas execuções simultâneas poderiam aplicar strikes em dobro.
+# Mesmo grupo da raspagem das primeiras páginas: as duas nunca rodam ao mesmo
+# tempo (strikes em dobro / gravações concorrentes); a que chega depois espera.
 concurrency:
   group: raspagem-brik
   cancel-in-progress: false
 
 jobs:
-  scrape:
-    runs-on: ubuntu-latest
-    timeout-minutes: 110
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-
-      - name: Instalar dependências do scraper (Python)
-        run: pip install -r scraper/requirements.txt
-
-      - name: Instalar dependências do worker (Node)
-        working-directory: worker
-        run: npm install
-
-      - name: Instalar tela virtual (Xvfb)
-        run: command -v xvfb-run || (sudo apt-get update -q && sudo apt-get install -y -q xvfb)
-
-      # Sem --headless: o OLX bloqueia o Chrome headless. O Xvfb dá uma tela
-      # virtual para o Chrome rodar com janela, como na máquina local.
-      - name: Rodar worker
-        working-directory: worker
-        # No agendamento os inputs vêm vazios: roda a lista completa.
-        run: |
-          args=()
-          if [ "$CICLO_COMPLETO" != "true" ]; then
-            read -ra args <<< "$BUSCAS"
-            if [ -n "$PAGINAS" ]; then args+=(--paginas "$PAGINAS"); fi
-          fi
-          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
-          echo "node worker.js ${args[*]}"
-          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node worker.js "${args[@]}"
-        env:
-          CICLO_COMPLETO: ${{ inputs.ciclo_completo }}
-          BUSCAS: ${{ inputs.buscas }}
-          PAGINAS: ${{ inputs.paginas }}
-          DRY_RUN: ${{ inputs.dry_run }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          PYTHON_EXECUTABLE: python
-          PYTHON_SCRIPT_PATH: ${{ github.workspace }}/scraper/app.py
+  raspagem:
+    uses: ./.github/workflows/raspagem-base.yml
+    secrets: inherit
+    with:
+      completo: ${{ github.event_name == 'schedule' || inputs.ciclo_completo == true }}
+      buscas: ${{ inputs.buscas }}
+      paginas: ${{ inputs.paginas }}
+      dry_run: ${{ inputs.dry_run == true }}
+      timeout: 180
