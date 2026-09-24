@@ -38,9 +38,9 @@ function Home() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-white pb-28 shadow-xl">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl">
       <BrandHeader>
-        <label className="flex items-center gap-3 rounded-full bg-white px-5 py-3 shadow-[0_8px_20px_-8px_rgba(0,0,0,0.5)] focus-within:ring-4 focus-within:ring-white/40">
+        <label className="flex items-center gap-3 rounded-full bg-white px-5 py-3 shadow-[0_8px_20px_-8px_rgba(43,43,43,0.5)] focus-within:ring-4 focus-within:ring-white/40">
           <SearchIcon className="h-5 w-5 shrink-0 text-brik" />
           <span className="sr-only">Procurar oferta de brique</span>
           <input
@@ -65,7 +65,7 @@ function Home() {
               className="flex w-24 flex-col items-center gap-2 rounded-xl text-xs font-medium"
             >
               <span
-                className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-md transition ${active ? 'bg-brik-dark ring-4 ring-brik/25' : 'bg-brik'
+                className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-md transition ${active ? 'bg-brik-dark ring-4 ring-accent/70' : 'bg-brik'
                   }`}
               >
                 <Icon className="h-8 w-8" />
@@ -105,7 +105,7 @@ function Home() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="rounded-full bg-brik px-5 py-2 text-sm font-medium text-white"
+                className="rounded-full bg-brik px-5 py-2 text-sm font-medium text-paper transition-colors hover:bg-brik-dark"
               >
                 Limpar filtros
               </button>

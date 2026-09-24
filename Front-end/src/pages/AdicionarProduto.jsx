@@ -26,7 +26,7 @@ const VAZIO = {
 }
 
 const CAMPO =
-  'w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-ink outline-none placeholder:text-ink/40 focus:border-brik'
+  'w-full rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none placeholder:text-ink/40 focus:border-brik'
 
 function Campo({ label, value, onChange, ...props }) {
   return (
@@ -68,9 +68,9 @@ function Selecao({ label, value, onChange, options }) {
 
 function Fotos({ fotos, onAdd }) {
   return (
-    <div className="rounded-xl border border-dashed border-black/15 p-5">
+    <div className="rounded-xl border border-dashed border-line p-5">
       <label className="flex cursor-pointer flex-col items-center gap-2">
-        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-paper text-ink/50">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-raise text-ink/50">
           <CameraIcon className="h-6 w-6" />
         </span>
         <span className="text-xs font-bold text-ink">Adicionar fotos</span>
@@ -128,7 +128,7 @@ function AdicionarProduto() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-white pb-10 shadow-xl">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-10 shadow-xl">
       <BrandHeader />
 
       <div className="flex items-center gap-2 px-4 pt-4">
@@ -136,7 +136,7 @@ function AdicionarProduto() {
           type="button"
           onClick={() => navigate(-1)}
           aria-label="Voltar"
-          className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink transition-colors hover:bg-paper"
+          className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink transition-colors hover:bg-surface-raise"
         >
           <ArrowLeftIcon className="h-5 w-5" />
         </button>
@@ -174,7 +174,7 @@ function AdicionarProduto() {
 
         <button
           type="submit"
-          className="mt-3 rounded-lg bg-gain py-3.5 text-center font-bold text-white"
+          className="mt-3 rounded-lg bg-brik py-3.5 text-center font-bold text-paper transition-colors hover:bg-brik-dark"
         >
           Adicionar Produto
         </button>

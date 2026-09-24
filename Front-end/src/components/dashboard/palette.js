@@ -4,14 +4,16 @@
 // mudou lá, mude aqui (e vice-versa).
 export const COLOR = {
   surface: '#ffffff', // fundo do card (recorta pontos e fatias)
-  raise: '#f4f4f6',
-  line: '#e8e8ec',
-  mute: '#6b6b73',
-  strong: '#000000',
-  profit: '#1d4ed8', // lucro / resultado positivo
-  loss: '#c62f2f', // prejuízo / resultado negativo
+  raise: '#efeee9',
+  line: '#d9d9d6', // Cinza claro: bordas e divisórias
+  mute: '#6b6a64',
+  strong: '#2b2b2b', // Grafite: títulos e valores
+  accent: '#0046d8', // Azul royal: destaques
+  profit: '#2f6b4a', // lucro / resultado positivo
+  loss: '#b3432f', // prejuízo / resultado negativo
 }
 
-// Rampa da rosca de ROIs: quanto mais escuro o azul, melhor o retorno. A fatia
-// selecionada sai desta rampa e vira preta, para destacar sem inventar cor.
-export const ROI_RAMP = ['#1d4ed8', '#4172df', '#7297e8', '#a5bef1', '#cfdcf9']
+// Rampa da rosca de ROIs, derivada do azul petróleo da marca: quanto mais
+// escuro o azul, melhor o retorno. A fatia selecionada sai desta rampa e vira
+// azul royal — a cor de destaque da paleta.
+export const ROI_RAMP = ['#0f4c5c', '#3a6d7a', '#6b929c', '#9db8bf', '#cfdfe3']

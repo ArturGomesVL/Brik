@@ -5,7 +5,7 @@ import { useReveal } from './reveal.js'
 import { Card, Eyebrow, Masked, Segmented } from './ui.jsx'
 
 // Três estados, três tons: neutro enquanto espera, âmbar quando está preso a
-// alguém, azul quando virou resultado.
+// alguém, verde quando virou resultado.
 const STATUS = {
   anunciado: { label: 'Anunciado', className: 'text-mute' },
   reservado: { label: 'Reservado', className: 'text-warn' },

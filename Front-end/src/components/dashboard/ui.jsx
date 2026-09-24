@@ -29,7 +29,7 @@ export function Eyebrow({ as: Tag = 'p', className = '', ...props }) {
 }
 
 // Variação com seta e sinal (nunca só a cor): ▲ 18,2% / ▼ 3,1%.
-// A cor sai do próprio valor: azul no lucro, vermelho no prejuízo, cinza no zero.
+// A cor sai do próprio valor: verde no lucro, vermelho no prejuízo, cinza no zero.
 // No zero não há seta — não houve alta nem queda, e dizer o contrário enganaria
 // tanto o olho quanto o leitor de tela.
 export function Delta({ value, format = formatPercent, note, className = '' }) {

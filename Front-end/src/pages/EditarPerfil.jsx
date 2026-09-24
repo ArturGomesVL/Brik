@@ -46,7 +46,7 @@ function Campo({ label, Icon, editavel = true, ...props }) {
   return (
     <label className="block">
       <span className="mb-1 block text-[11px] text-ink/50">{label}</span>
-      <span className="flex items-center gap-2.5 rounded-lg border border-black/15 bg-white px-3 py-2.5 focus-within:border-brik">
+      <span className="flex items-center gap-2.5 rounded-lg border border-line bg-white px-3 py-2.5 focus-within:border-brik">
         <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-ink" />
         <input
           className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink/35"
@@ -93,13 +93,13 @@ function EditarPerfil() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-white pb-10 shadow-xl">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-10 shadow-xl">
       <BrandHeader voltarPara="/perfil" />
 
       <h1 className="sr-only">Editar perfil</h1>
 
       <form onSubmit={salvar} className="flex flex-col gap-4 px-4">
-        <section className="relative -mt-3 rounded-2xl bg-white px-4 pb-4 pt-3 shadow-[0_6px_18px_-8px_rgba(11,27,77,0.35)]">
+        <section className="relative -mt-3 rounded-2xl bg-white px-4 pb-4 pt-3 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.35)]">
           <h2 className="text-xs font-bold text-ink/50">Foto de Perfil</h2>
 
           <div className="mt-2 flex items-center gap-4">
@@ -111,8 +111,8 @@ function EditarPerfil() {
               )}
             </span>
 
-            <div className="flex flex-1 flex-col gap-2.5 border-l border-black/10 pl-4">
-              <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-brik py-1.5 text-xs font-medium text-brik transition-colors hover:bg-paper">
+            <div className="flex flex-1 flex-col gap-2.5 border-l border-line pl-4">
+              <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-brik py-1.5 text-xs font-medium text-brik transition-colors hover:bg-surface-raise">
                 <CameraIcon aria-hidden="true" className="h-4 w-4" />
                 Alterar Foto
                 <input type="file" accept="image/*" onChange={trocarFoto} className="sr-only" />
@@ -122,7 +122,7 @@ function EditarPerfil() {
                 type="button"
                 onClick={() => setFoto(null)}
                 disabled={!foto}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-red-600 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-loss py-1.5 text-xs font-medium text-loss transition-colors hover:bg-loss/10 disabled:opacity-40 disabled:hover:bg-transparent"
               >
                 <TrashIcon aria-hidden="true" className="h-4 w-4" />
                 Remover Foto
@@ -131,7 +131,7 @@ function EditarPerfil() {
           </div>
         </section>
 
-        <section className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-[0_6px_18px_-8px_rgba(11,27,77,0.35)]">
+        <section className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.35)]">
           <Secao Icon={PersonIcon} titulo="Informações Pessoais" />
 
           <Campo
@@ -188,7 +188,7 @@ function EditarPerfil() {
           />
         </section>
 
-        <button type="submit" className="rounded-lg bg-brik py-3.5 text-center font-bold text-white">
+        <button type="submit" className="rounded-lg bg-brik py-3.5 text-center font-bold text-paper transition-colors hover:bg-brik-dark">
           Salvar alterações
         </button>
       </form>

@@ -92,7 +92,7 @@ function Dashboard() {
             <Link
               to="/calculadora"
               viewTransition
-              className="pointer-events-auto flex size-20 flex-col items-center justify-center gap-1 rounded-2xl bg-strong text-[10px] font-medium leading-none text-surface shadow-[0_8px_24px_-8px_rgba(16,16,20,0.45)] transition-opacity hover:opacity-90"
+              className="pointer-events-auto flex size-20 flex-col items-center justify-center gap-1 rounded-2xl bg-strong text-[10px] font-medium leading-none text-surface shadow-[0_8px_24px_-8px_rgba(43,43,43,0.45)] transition-opacity hover:opacity-90"
             >
               <CalculatorIcon className="h-6 w-6" />
               <span className="text-center leading-tight">

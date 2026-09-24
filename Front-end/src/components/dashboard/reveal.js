@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext } from 'react'
 
-// Entrada do Dashboard: o fundo preto entra num fade curto e, logo atrás dele, a
+// Entrada do Dashboard: o fundo marfim entra num fade curto e, logo atrás dele, a
 // interface se monta elemento por elemento — cada um surgindo no próprio lugar
 // (opacidade + escala, sem deslizar). Cada elemento recebe a sua posição na
 // sequência (--step) e o CSS transforma isso em animation-delay (ver .reveal no

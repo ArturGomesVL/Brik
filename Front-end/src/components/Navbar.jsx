@@ -37,7 +37,7 @@ function Navbar() {
   const toCalculator = paraCalculadora || paraNovoProduto || paraEditarPerfil
   // A barra só vira imagem (view-transition-name) quando está SAINDO. Na volta
   // ela entra viva, animada por CSS: dentro de uma view transition o vidro perde
-  // o fundo que ele borra, e sobrava só o "+" azul aparecendo sozinho.
+  // o fundo que ele borra, e sobrava só o "+" verde aparecendo sozinho.
   // Nasce true se a barra montou no meio da transição (ou seja, ela é a que está
   // chegando) e volta a false assim que a transição termina.
   const [chegando, setChegando] = useState(toCalculator)
@@ -289,7 +289,7 @@ function Navbar() {
               viewTransition
               aria-label={ADD_ITEM.label}
               draggable={false}
-              className="glass-add flex h-14 w-14 items-center justify-center rounded-full text-white"
+              className="glass-add flex h-14 w-14 items-center justify-center rounded-full text-paper"
             >
               <PlusIcon className="h-7 w-7" />
             </NavLink>

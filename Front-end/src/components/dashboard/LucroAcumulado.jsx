@@ -13,7 +13,7 @@ const RANGES = [
 ]
 
 // O lucro carrega a cor de resultado positivo; o investimento é a referência
-// neutra, em cinza tracejado, para o azul não significar duas coisas no gráfico.
+// neutra, em cinza tracejado, para o verde não significar duas coisas no gráfico.
 const SERIES_STYLE = {
   lucro: { key: 'lucro', label: 'Lucro', color: COLOR.profit },
   investimento: { key: 'investimento', label: 'Investimento', color: COLOR.mute, dashed: true },

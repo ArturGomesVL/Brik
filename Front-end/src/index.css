@@ -3,29 +3,47 @@
 
 @theme {
   --font-sans: "Rubik", ui-sans-serif, system-ui, sans-serif;
-  --color-brik: #0046d8;
-  --color-brik-dark: #0033a3;
-  --color-ink: #0b1b4d;
-  --color-paper: #f3f5fb;
-  --color-gain: #0a7d43;
-  --color-gain-bg: #e3f6ec;
 
-  /* Dashboard (tema claro). O branco domina, o preto carrega a informação e a
-     cor aparece só no resultado financeiro. Os nomes são semânticos de propósito:
-     para trocar o tema de novo, basta mexer nestes valores — nenhum componente
-     tem cor escrita na mão. */
-  --color-surface: #ffffff; /* fundo da página */
-  --color-surface-card: #ffffff; /* cards: separados por borda + sombra, não por tom */
-  --color-surface-raise: #f4f4f6; /* preenchimentos sutis: trilhos, abas, hover */
-  --color-line: #e8e8ec; /* bordas e divisores */
-  --color-mute: #6b6b73; /* texto secundário (cinza médio) */
-  --color-strong: #000000; /* texto principal, títulos, valores */
-  --color-profit: #1d4ed8; /* lucro / resultado positivo */
-  --color-loss: #c62f2f; /* prejuízo / resultado negativo */
-  --color-warn: #b4791a; /* único tom extra: status "reservado" */
+  /* Paleta da marca. Cada cor tem um papel fixo — use o token pelo papel,
+     não pela aparência:
+       Marfim         #F8F7F4  fundo principal       -> paper / surface
+       Azul petróleo  #0F4C5C  cor da marca          -> brik
+       Azul royal     #0046D8  destaques             -> accent
+       Grafite        #2B2B2B  títulos e ícones      -> ink / strong
+       Cinza claro    #D9D9D6  bordas e divisórias   -> line
+     Botões principais são azul petróleo com texto marfim. O azul royal é só detalhe
+     (ícones, selos, seleção). Sobre o petróleo ele some — ali ele vira fundo
+     de um círculo com ícone branco. Texto sobre fundo azul royal é sempre branco. */
+  --color-paper: #f8f7f4; /* Marfim: fundo principal */
+  --color-brik: #0f4c5c; /* Azul petróleo: cor da marca */
+  --color-brik-dark: #0a3540; /* azul petróleo mais escuro: hover e gradientes */
+  --color-accent: #0046d8; /* Azul royal: destaques pontuais */
+  --color-ink: #2b2b2b; /* Grafite: títulos e ícones */
+  --color-line: #d9d9d6; /* Cinza claro: bordas e divisórias */
+  --color-gain: #2f6b4a; /* verde de lucro */
+  --color-gain-bg: #ddefe8; /* Verde suave: cards de lucro */
 
-  /* Sombra dos cards: discreta, só o suficiente para descolar do fundo branco. */
-  --shadow-card: 0 1px 2px rgba(16, 16, 20, 0.05), 0 1px 1px rgba(16, 16, 20, 0.03);
+  /* Selos de oportunidade: o azul fica mais intenso conforme o negócio melhora. */
+  --color-level-boa: #dce7fc; /* Bom: azul claro, com texto level-boa-ink */
+  --color-level-boa-ink: #0033a3;
+  --color-level-otima: #2e66e0; /* Ótimo: azul médio, texto branco */
+  --color-level-extra: #0033a3; /* Extraordinário: azul profundo, texto branco */
+
+  /* Dashboard. O marfim domina, o grafite carrega a informação e a cor aparece
+     só no resultado financeiro. Os nomes são semânticos de propósito: para
+     trocar o tema, basta mexer nestes valores — nenhum componente tem cor
+     escrita na mão. */
+  --color-surface: #f8f7f4; /* fundo da página (marfim) */
+  --color-surface-card: #ffffff; /* cards: separados por borda + sombra */
+  --color-surface-raise: #efeee9; /* preenchimentos sutis: trilhos, abas, hover */
+  --color-mute: #6b6a64; /* texto secundário (cinza quente escuro) */
+  --color-strong: #2b2b2b; /* texto principal, títulos, valores (grafite) */
+  --color-profit: #2f6b4a; /* lucro / resultado positivo */
+  --color-loss: #b3432f; /* prejuízo / resultado negativo */
+  --color-warn: #0033a3; /* status "reservado": azul royal escurecido */
+
+  /* Sombra dos cards: discreta, só o suficiente para descolar do fundo marfim. */
+  --shadow-card: 0 1px 2px rgba(43, 43, 43, 0.06), 0 1px 1px rgba(43, 43, 43, 0.04);
 }
 
 body {
@@ -51,7 +69,7 @@ body {
 .star-pop { animation: star-pop 0.35s ease-out; }
 
 .skeleton {
-  background: linear-gradient(100deg, #e6e9f2 30%, #f3f5fb 50%, #e6e9f2 70%) 0 0 / 200% 100%;
+  background: linear-gradient(100deg, #ecebe6 30%, #f8f7f4 50%, #ecebe6 70%) 0 0 / 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
 
@@ -131,16 +149,16 @@ body {
   transform: scale(1.08);
 }
 
-/* O "+" segue o mesmo vidro: azul translúcido, não um disco sólido. */
+/* O "+" é o CTA da barra: segue o mesmo vidro, em azul petróleo translúcido, com o ícone marfim. */
 .glass-add {
-  background: linear-gradient(180deg, rgba(60, 120, 245, 0.62), rgba(10, 70, 200, 0.7));
+  background: linear-gradient(180deg, rgba(29, 97, 115, 0.72), rgba(10, 53, 64, 0.82));
   -webkit-backdrop-filter: blur(16px) saturate(190%);
   backdrop-filter: blur(16px) saturate(190%);
   box-shadow:
     inset 1.5px 1.5px 1px -0.5px rgba(255, 255, 255, 0.7),
     inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.3),
     0 0 0 4px rgba(255, 255, 255, 0.4),
-    0 0 16px 2px rgba(80, 130, 255, 0.45);
+    0 0 16px 2px rgba(15, 76, 92, 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -199,7 +217,7 @@ body {
 }
 
 /* Entrada do Dashboard ---------------------------------------------------
-   Duas camadas. Primeiro a superfície preta entra por cima da tela anterior
+   Duas camadas. Primeiro a superfície entra por cima da tela anterior
    (clara) num fade curto; logo em seguida a interface se monta elemento por
    elemento, cada um nascendo no próprio lugar — sem deslizar. Cada elemento
    traz --step (sua posição na sequência, definida em components/dashboard/
@@ -215,7 +233,7 @@ body {
   }
 }
 
-/* O fundo assenta de um cinza claro para o branco. Anima background-color, e
+/* O fundo assenta de um cinza claro para o marfim. Anima background-color, e
    não opacity: opacity no elemento raiz apagaria todos os descendentes durante
    a captura da view transition, e a logo deixaria de viajar da Home para cá. */
 @keyframes reveal-surface {

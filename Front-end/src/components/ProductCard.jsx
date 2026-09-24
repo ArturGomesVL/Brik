@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { GamepadIcon, PhoneIcon, PinIcon, StarIcon, WarningIcon } from './icons.jsx'
 
 const LEVELS = {
-  boa: { label: 'Bom negócio', className: 'bg-orange-500' },
-  otima: { label: 'Ótimo negócio', className: 'bg-green-600' },
-  extraordinaria: { label: 'Extraordinário', className: 'bg-purple-600' },
+  boa: { label: 'Bom negócio', className: 'bg-level-boa text-level-boa-ink' },
+  otima: { label: 'Ótimo negócio', className: 'bg-level-otima text-white' },
+  extraordinaria: { label: 'Extraordinário', className: 'bg-level-extra text-white' },
 }
 
 const CATEGORY_ICONS = { iphone: PhoneIcon, videogame_console: GamepadIcon }
@@ -25,7 +25,7 @@ function ProductCard({ item }) {
   const profitPct = hasMarket ? Math.round((profit / item.price) * 100) : null
 
   return (
-    <article className="relative flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_6px_18px_-6px_rgba(11,27,77,0.25)] ring-1 ring-ink/5">
+    <article className="relative flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_6px_18px_-6px_rgba(43,43,43,0.25)] ring-1 ring-ink/5">
       <a
         href={item.url}
         target="_blank"
@@ -81,16 +81,16 @@ function ProductCard({ item }) {
               </span>
             </p>
           ) : (
-            <p className="rounded-lg bg-paper px-2.5 py-1.5 text-[11px] text-ink/60">Lucro ainda sem média de mercado</p>
+            <p className="rounded-lg bg-surface-raise px-2.5 py-1.5 text-[11px] text-ink/60">Lucro ainda sem média de mercado</p>
           )}
 
           {item.defeito && (
-            <div role="note" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-red-700 ring-1 ring-red-200">
+            <div role="note" className="rounded-lg bg-loss/10 px-2.5 py-1.5 text-loss ring-1 ring-loss/25">
               <p className="flex items-center gap-1.5 text-[11px] font-bold">
                 <WarningIcon className="h-4 w-4 shrink-0" />
                 Produto com defeito
               </p>
-              <p className="mt-0.5 text-[10px] leading-tight text-red-700/80">
+              <p className="mt-0.5 text-[10px] leading-tight text-loss/80">
                 A média de mercado é de aparelhos sem defeito.
               </p>
             </div>
@@ -100,7 +100,7 @@ function ProductCard({ item }) {
 
       <div className="absolute bottom-3 left-3 right-12 flex items-center gap-2">
         {level && (
-          <span className={`whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-bold text-white ${level.className}`}>
+          <span className={`whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-bold ${level.className}`}>
             {level.label}
           </span>
         )}
@@ -119,7 +119,7 @@ function ProductCard({ item }) {
         onClick={() => setSaved((s) => !s)}
         className="absolute bottom-2 right-2 rounded-full p-1"
       >
-        <StarIcon key={String(saved)} className={`h-6 w-6 ${saved ? 'star-pop text-yellow-400' : 'text-gray-300'}`} />
+        <StarIcon key={String(saved)} className={`h-6 w-6 ${saved ? 'star-pop text-accent' : 'text-line'}`} />
       </button>
     </article>
   )
@@ -127,7 +127,7 @@ function ProductCard({ item }) {
 
 export function ProductCardSkeleton() {
   return (
-    <div className="overflow-hidden rounded-2xl bg-white shadow-[0_6px_18px_-6px_rgba(11,27,77,0.25)] ring-1 ring-ink/5" aria-hidden="true">
+    <div className="overflow-hidden rounded-2xl bg-white shadow-[0_6px_18px_-6px_rgba(43,43,43,0.25)] ring-1 ring-ink/5" aria-hidden="true">
       <div className="skeleton aspect-[4/3] w-full" />
       <div className="flex flex-col gap-2.5 p-3 pb-14">
         <div className="skeleton h-3.5 w-full rounded" />

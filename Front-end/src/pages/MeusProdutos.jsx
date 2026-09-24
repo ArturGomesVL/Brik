@@ -22,7 +22,7 @@ function Menu() {
     <button
       type="button"
       aria-label="Opções do produto"
-      className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink/40 transition-colors hover:bg-paper hover:text-ink"
+      className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink/40 transition-colors hover:bg-surface-raise hover:text-ink"
     >
       <span aria-hidden="true" className="text-lg leading-none">
         ⋮
@@ -46,7 +46,7 @@ function Foto({ src }) {
   return (
     <span
       aria-hidden="true"
-      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-paper font-mono text-[9px] tracking-widest text-ink/30"
+      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-surface-raise font-mono text-[9px] tracking-widest text-ink/30"
     >
       FOTO
     </span>
@@ -55,7 +55,7 @@ function Foto({ src }) {
 
 function Produto({ item, onStatus }) {
   return (
-    <li className="rounded-2xl border border-black/5 bg-white p-3.5 shadow-[0_2px_8px_-4px_rgba(11,27,77,0.15)]">
+    <li className="rounded-2xl border border-line bg-white p-3.5 shadow-[0_2px_8px_-4px_rgba(43,43,43,0.15)]">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium text-ink/70">{item.data}</p>
         <Menu />
@@ -127,7 +127,7 @@ function MeusProdutos() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-white pb-44 shadow-xl">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-44 shadow-xl">
       <BrandHeader />
 
       <div className="flex items-center gap-2 px-4 pt-4">
@@ -135,7 +135,7 @@ function MeusProdutos() {
           type="button"
           onClick={() => navigate(-1)}
           aria-label="Voltar"
-          className="-ml-1 flex h-9 w-9 items-center justify-center rounded-xl text-ink transition-colors hover:bg-paper"
+          className="-ml-1 flex h-9 w-9 items-center justify-center rounded-xl text-ink transition-colors hover:bg-surface-raise"
         >
           <ArrowLeftIcon className="h-5 w-5" />
         </button>
@@ -146,7 +146,7 @@ function MeusProdutos() {
       <div
         role="tablist"
         aria-label="Situação dos produtos"
-        className="mt-4 flex gap-5 overflow-x-auto border-b border-black/5 px-4"
+        className="mt-4 flex gap-5 overflow-x-auto border-b border-line px-4"
       >
         {STATUS.map(({ key, label }) => {
           const ativa = key === aba
@@ -193,7 +193,7 @@ function MeusProdutos() {
         <Link
           to="/adicionar/novo"
           viewTransition
-          className="pointer-events-auto block rounded-2xl bg-brik py-3.5 text-center font-bold text-white"
+          className="pointer-events-auto block rounded-2xl bg-brik py-3.5 text-center font-bold text-paper transition-colors hover:bg-brik-dark"
         >
           Adicionar novo produto
         </Link>

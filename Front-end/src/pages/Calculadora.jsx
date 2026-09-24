@@ -8,7 +8,7 @@ import { formatBRL, formatDecimal, formatInt } from '../lib/format.js'
 // Calculadora de revenda: o usuário preenche os custos e o preço de venda com o
 // teclado da própria tela, e o cartão do topo responde na hora com lucro, margem
 // e quanto o preço ainda pode cair até empatar. Cores e fonte seguem o app:
-// Rubik, azul para lucro, vermelho para prejuízo, azul Brik para ação.
+// Rubik, verde para lucro, vermelho para prejuízo, verde da marca para ação.
 
 // Rótulo pequeno em caixa alta, na Rubik (e não em mono, para não parecer genérico).
 const LABEL = 'text-[10px] font-medium uppercase tracking-[0.14em]'
@@ -34,10 +34,10 @@ const KEYS = [
 const TONE = {
   num: 'border border-line bg-surface-card text-strong shadow-card hover:bg-surface-raise text-xl font-medium',
   aux: 'bg-surface-raise text-mute hover:text-strong text-xl font-medium',
-  next: 'row-span-2 bg-brik px-2 text-center text-xs font-bold uppercase leading-tight tracking-[0.14em] text-white hover:bg-brik-dark',
+  next: 'row-span-2 bg-brik px-2 text-center text-xs font-bold uppercase leading-tight tracking-[0.14em] text-paper hover:bg-brik-dark',
 }
 
-// Tom do resultado: azul no lucro, vermelho no prejuízo, neutro no zero.
+// Tom do resultado: verde no lucro, vermelho no prejuízo, neutro no zero.
 const toneOf = (value) => (value > 0 ? 'text-profit' : value < 0 ? 'text-loss' : 'text-strong')
 
 function Equilibrio({ lucro, margem }) {
@@ -58,11 +58,11 @@ function Calculadora() {
   const [active, setActive] = useState(0)
   const r = resultado(values)
   const field = FIELDS[active].key
-  // No último campo (preço de venda) o botão azul deixa de avançar e passa a
+  // No último campo (preço de venda) o botão verde deixa de avançar e passa a
   // oferecer o próximo passo natural: dar um nome à conta e guardá-la.
   const isLast = active === FIELDS.length - 1
 
-  // Folha "nome do brique", aberta pelo botão azul no último campo.
+  // Folha "nome do brique", aberta pelo botão verde no último campo.
   const [naming, setNaming] = useState(false)
   const [nome, setNome] = useState('')
 
@@ -285,7 +285,7 @@ function NomeDoBrique({ nome, onChange, onSubmit, onClose }) {
         <button
           type="submit"
           disabled={!nome.trim()}
-          className={`${LABEL} mt-3 w-full rounded-2xl bg-brik py-4 text-xs font-bold text-white transition-colors hover:bg-brik-dark disabled:opacity-40`}
+          className={`${LABEL} mt-3 w-full rounded-2xl bg-brik py-4 text-xs font-bold text-paper transition-colors hover:bg-brik-dark disabled:opacity-40`}
         >
           Adicionar
         </button>

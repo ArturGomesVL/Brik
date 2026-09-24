@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeftIcon } from './icons.jsx'
 
-// Cabeçalho com a logo. Na Home ele é azul e rola com a página, com a logo à esquerda
-// e a busca abaixo. No Dashboard ele é branco, fica fixo no topo e leva só a logo
+// Cabeçalho com a logo. Na Home ele é verde e rola com a página, com a logo à esquerda
+// e a busca abaixo. No Dashboard ele é marfim, fica fixo no topo e leva só a logo
 // no centro. O view-transition-name faz o navegador animar a logo de uma tela para a
-// outra ao navegar (ver index.css). Com voltarPara, o header azul ganha uma seta
+// outra ao navegar (ver index.css). Com voltarPara, o header verde ganha uma seta
 // branca à esquerda que leva para essa rota, e a logo vai para o centro na mesma
 // altura: ao navegar ela só desliza para o lado, sem subir.
 function BrandHeader({ dashboard = false, voltarPara, className = '', children, ...props }) {
@@ -29,13 +29,13 @@ function BrandHeader({ dashboard = false, voltarPara, className = '', children, 
             <ArrowLeftIcon className="h-7 w-7" />
           </Link>
         )}
-        {/* O arquivo da logo é branco (feito para o azul da Home). No header branco
-            do Dashboard ele sumiria, então brightness(0) zera o RGB e deixa a marca
-            preta, preservando a transparência. */}
+        {/* O arquivo da logo é branco (feito para o verde da Home). No header marfim
+            do Dashboard ele sumiria, então brightness(0) zera o RGB e a opacidade
+            deixa a marca em grafite, preservando a transparência. */}
         <img
           src="/logoBrik.png"
           alt="Brik"
-          className={`h-9 w-auto ${dashboard ? '[filter:brightness(0)]' : ''}`}
+          className={`h-9 w-auto ${dashboard ? '[filter:brightness(0)_opacity(0.83)]' : ''}`}
           style={{ viewTransitionName: 'brik-logo' }}
         />
       </div>

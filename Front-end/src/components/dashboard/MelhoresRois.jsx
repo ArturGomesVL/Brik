@@ -4,9 +4,9 @@ import { COLOR, ROI_RAMP } from './palette.js'
 import { useReveal } from './reveal.js'
 import { Card, Eyebrow, Masked } from './ui.jsx'
 
-// A fatia selecionada fica preta; as demais seguem a rampa de azul (mais escuro = melhor ROI).
+// A fatia selecionada fica azul royal; as demais seguem a rampa de petróleo (mais escuro = melhor ROI).
 const RAMP = ROI_RAMP
-const SELECTED = COLOR.strong
+const SELECTED = COLOR.accent
 
 const SIZE = 148
 const RADIUS = 58
