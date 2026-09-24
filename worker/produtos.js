@@ -14,13 +14,13 @@ const PRODUTOS = [
 
     // PlayStation continua separado por geração porque os vendedores costumam
     // abreviar ("PS5", "PS4"); uma busca única por "playstation" perderia anúncios.
-    { busca: 'ps5', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 20 },
-    { busca: 'ps4', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 20 },
-    { busca: 'ps3', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 20 },
-    { busca: 'ps2', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 20 },
+    { busca: 'ps5', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 100 },
+    { busca: 'ps4', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 100 },
+    { busca: 'ps3', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 100 },
+    { busca: 'ps2', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 100 },
     // Xbox fica numa busca só: os vendedores escrevem "Xbox 360"/"Xbox One"/"Xbox
     // Series" por extenso, então q=xbox já cobre todas as gerações.
-    { busca: 'xbox', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 20 },
+    { busca: 'xbox', categoria: 'games', condicao: 'usado', estado: 'pe', paginas: 100 },
 ];
 
 // A condição de cada anúncio vem do filtro da busca do OLX (o campo "condicao" do
