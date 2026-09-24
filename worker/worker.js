@@ -328,6 +328,12 @@ function mapAndValidateScraperOutput(payload) {
         anuncios.map((raw) => (raw.Link ? normalizeUrl(raw.Link) : null)).filter(Boolean)
     )];
 
+    // Link completo de cada anúncio (o banco só guarda o canônico /vi/<id>): o
+    // Cloudflare do OLX deixa ler a descrição por ele bem mais que pelo /vi/<id>.
+    const linksOlx = new Map(
+        anuncios.filter((raw) => raw.Link).map((raw) => [normalizeUrl(raw.Link), raw.Link])
+    );
+
     if (defeitoUrls.length > 0) {
         console.warn(`[scraper] ${defeitoUrls.length} anúncio(s) descartado(s): título diz que o produto tem defeito.`);
     }
@@ -335,7 +341,7 @@ function mapAndValidateScraperOutput(payload) {
         console.log(`[scraper] ${comDefeitoMantidos} anúncio(s) com defeito no título mantido(s), marcados com aviso (${category}).`);
     }
 
-    return { category, items, seenUrls, defeitoUrls, condition: conditionFromScrape(payload.condicao) };
+    return { category, items, seenUrls, defeitoUrls, linksOlx, condition: conditionFromScrape(payload.condicao) };
 }
 
 // ------------------------------------------------------------------
@@ -1164,16 +1170,21 @@ function curlPage(url) {
     });
 }
 
-// Descrição do anúncio, ou null se não deu pra ler (bloqueio 403 do Cloudflare
-// aparece de forma intermitente, em ~1 de cada 4 requisições: repetir costuma passar).
-async function fetchAdDescription(url) {
+// Descrição do anúncio, ou null se não deu pra ler. O Cloudflare do OLX barra
+// com 403 quase toda requisição na forma curta /vi/<id> (~1 em 6 passa); o link
+// completo do anúncio (pe.olx.com.br/.../slug-<id>) passa cerca do dobro (~2 em 5):
+// linkOlx é esse link, vindo da raspagem deste ciclo. Sem ele (anúncio que não
+// apareceu na raspagem atual), só resta o /vi/<id>.
+async function fetchAdDescription(url, linkOlx = null) {
     const id = extractAdId(url);
     if (!id) return null;
-    for (let tentativa = 1; tentativa <= 3; tentativa++) {
-        const page = await curlPage(`https://www.olx.com.br/vi/${id}`);
+    const curto = `https://www.olx.com.br/vi/${id}`;
+    const tentativas = linkOlx ? [linkOlx, linkOlx, linkOlx, curto] : [curto, curto, curto];
+    for (const [i, alvo] of tentativas.entries()) {
+        if (i > 0) await new Promise((resolve) => setTimeout(resolve, 3000));
+        const page = await curlPage(alvo);
         if (page && page.status === 200) return extractDescription(page.body);
         if (page && page.status !== 403) return null; // fora do ar etc.: os strikes cuidam
-        await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     return null;
 }
@@ -1191,7 +1202,9 @@ async function cacheVeredito(coluna, urls) {
     }
 }
 
-async function verifyHighProfitDescriptions(category) {
+// linksOlx: Map url canônica -> link completo do anúncio na raspagem deste ciclo
+// (ver fetchAdDescription).
+async function verifyHighProfitDescriptions(category, linksOlx = new Map()) {
     // Anúncio já marcado com defeito pelo título (iPhone) fica de fora: já aparece
     // com aviso no card e não precisa gastar leitura nem Haiku.
     const { data: pendentes, error } = await supabase
@@ -1213,7 +1226,7 @@ async function verifyHighProfitDescriptions(category) {
     let semDescricao = 0;
     for (let i = 0; i < pendentes.length; i += OLX_PROBE_CONCURRENCY) {
         const grupo = pendentes.slice(i, i + OLX_PROBE_CONCURRENCY);
-        const textos = await Promise.all(grupo.map((ad) => fetchAdDescription(ad.url)));
+        const textos = await Promise.all(grupo.map((ad) => fetchAdDescription(ad.url, linksOlx.get(ad.url))));
         grupo.forEach((ad, j) => (textos[j] ? comDescricao.push({ ...ad, description: textos[j] }) : semDescricao++));
     }
     if (semDescricao > 0) {
@@ -1316,7 +1329,7 @@ async function verifyHighProfitDescriptions(category) {
 // Processa UM produto já raspado: cache → Haiku → regras de variant → médias →
 // anuncios_ativos/historico_precos. NÃO trata strikes: isso é feito no fim do
 // ciclo, por categoria (ver run()).
-async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []) {
+async function processProduct(category, rawItemsRaw, condition, defeitoUrls = [], linksOlx = new Map()) {
     await dropDefectiveFromDatabase(defeitoUrls);
 
     // Deduplica por url — proteção extra contra duplicatas na raspagem
@@ -1397,7 +1410,7 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
 
         if (VERIFY_DESCRIPTIONS) {
             console.log(`5b. Verificando descrição dos anúncios com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
-            await verifyHighProfitDescriptions(category);
+            await verifyHighProfitDescriptions(category, linksOlx);
         }
     }
 
@@ -1435,7 +1448,7 @@ async function run() {
         try {
             console.log('1. Rodando script Python de raspagem...');
             const payload = await runPythonScraper(produto, { headless });
-            const { category, items, seenUrls, defeitoUrls, condition } = mapAndValidateScraperOutput(payload);
+            const { category, items, seenUrls, defeitoUrls, linksOlx, condition } = mapAndValidateScraperOutput(payload);
             // JSON de versão antiga do scraper não tem o campo: assume completo.
             const completo = payload.completo !== false;
             console.log(
@@ -1450,7 +1463,7 @@ async function run() {
                 continue;
             }
 
-            const r = await processProduct(category, items, condition, defeitoUrls);
+            const r = await processProduct(category, items, condition, defeitoUrls, linksOlx);
             resumo.push({ nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo });
         } catch (err) {
             // Um produto com problema não derruba os outros; a categoria dele
