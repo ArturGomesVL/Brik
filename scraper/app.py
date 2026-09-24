@@ -467,6 +467,80 @@ def main():
     print(f'RESULTADO_JSON={caminho_arquivo}', flush=True)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# DESCRIÇÕES (--descricoes)
+# ──────────────────────────────────────────────────────────────────────────────
+# O worker verifica a descrição dos anúncios de lucro alto. O curl dele toma 403
+# do Cloudflare em praticamente toda requisição (no Actions, todas); o Chrome da
+# raspagem passa. A descrição fica no JSON-LD (schema.org/Product) da página do
+# anúncio; aqui só devolvemos os blocos JSON-LD crus e o worker extrai o texto.
+TENTATIVAS_DESCRICAO = 2
+
+
+def _pagina_anuncio_pronta(driver) -> bool:
+    """A página do anúncio terminou de carregar em algum dos três desfechos:
+    JSON-LD presente, anúncio fora do ar ou bloqueio do Cloudflare."""
+    if driver.find_elements(By.XPATH, "//script[@type='application/ld+json']"):
+        return True
+    titulo = driver.title.lower()
+    return 'não encontrado' in titulo or 'attention required' in titulo
+
+
+def ler_json_ld(driver, link: str) -> tuple[list[str], str]:
+    """Abre o anúncio e devolve (blocos JSON-LD, título da página). Sem JSON-LD
+    (bloqueio, anúncio fora do ar, timeout) devolve lista vazia."""
+    titulo = ''
+    for tentativa in range(1, TENTATIVAS_DESCRICAO + 1):
+        if tentativa > 1:
+            sleep(random.uniform(4, 8))
+        try:
+            # O Cloudflare deixa passar a 1ª página de anúncio da sessão e barra as
+            # seguintes ("Attention Required!"), mesmo com 15s entre elas; limpando
+            # os cookies antes de cada anúncio, todas passam.
+            driver.delete_all_cookies()
+            driver.execute_cdp_cmd('Network.clearBrowserCookies', {})
+            driver.get(link)
+            WebDriverWait(driver, 15).until(_pagina_anuncio_pronta)
+            titulo = driver.title
+            blocos = driver.execute_script(
+                "return Array.from(document.querySelectorAll('script[type=\"application/ld+json\"]'), s => s.textContent)"
+            )
+            if blocos:
+                return blocos, titulo
+            if 'não encontrado' in titulo.lower():
+                return [], titulo  # anúncio fora do ar: repetir não adianta
+        except (TimeoutException, WebDriverException):
+            try:
+                titulo = driver.title
+            except Exception:
+                pass
+    return [], titulo
+
+
+def ler_descricoes(caminho_entrada: str):
+    """Lê a lista de links (JSON) em caminho_entrada e grava, ao lado dela, um
+    <entrada>-resultado.json com {link, titulo_pagina, json_ld} por anúncio."""
+    links = json.loads(Path(caminho_entrada).read_text(encoding='utf-8'))
+    driver = criar_driver(headless=HEADLESS, usar_proxy=USAR_PROXY)
+    resultados = []
+    try:
+        for i, link in enumerate(links, start=1):
+            blocos, titulo = ler_json_ld(driver, link)
+            logger.info(f'[descrição {i}/{len(links)}] {"OK" if blocos else "sem JSON-LD"} '
+                        f'(título da página: "{titulo}") {link}')
+            resultados.append({'link': link, 'titulo_pagina': titulo, 'json_ld': blocos})
+            if i < len(links):
+                sleep(random.uniform(1, 3))
+    finally:
+        driver.quit()
+
+    entrada = Path(caminho_entrada)
+    caminho_saida = str(entrada.with_name(f'{entrada.stem}-resultado.json'))
+    with open(caminho_saida, 'w', encoding='utf-8') as f:
+        json.dump({'resultados': resultados}, f, ensure_ascii=False)
+    print(f'RESULTADO_JSON={caminho_saida}', flush=True)
+
+
 def ler_argumentos() -> argparse.Namespace:
     """Permite ao worker escolher o produto de cada execução. Sem argumentos, usa as constantes do topo."""
     p = argparse.ArgumentParser(description='Raspador do OLX (Selenium)')
@@ -478,6 +552,9 @@ def ler_argumentos() -> argparse.Namespace:
     p.add_argument('--primeiras', action='store_true',
                    help='raspa as --paginas PRIMEIRAS páginas (mais recentes) em vez das últimas')
     p.add_argument('--headless', action='store_true', help='roda sem abrir janela')
+    p.add_argument('--descricoes', metavar='ARQUIVO',
+                   help='em vez de raspar a busca, lê o JSON-LD dos anúncios listados no ARQUIVO '
+                        '(JSON com a lista de links) e grava <ARQUIVO>-resultado.json')
     return p.parse_args()
 
 
@@ -497,4 +574,7 @@ if __name__ == '__main__':
         PRIMEIRAS = True
     if _args.headless:
         HEADLESS = True
-    main()
+    if _args.descricoes:
+        ler_descricoes(_args.descricoes)
+    else:
+        main()

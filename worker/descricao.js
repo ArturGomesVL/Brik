@@ -40,15 +40,14 @@ function htmlParaTexto(html) {
 }
 
 // A página do anúncio traz um JSON-LD (schema.org/Product) com o campo "description".
-// Devolve o texto limpo, ou null se a página não tem descrição (ex: página de
-// bloqueio do Cloudflare, anúncio fora do ar).
-function extractDescription(html) {
-    const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
-    let m;
-    while ((m = re.exec(String(html || '')))) {
+// Recebe o conteúdo dos <script type="application/ld+json"> da página e devolve o
+// texto limpo, ou null se nenhum tem descrição (ex: página de bloqueio do
+// Cloudflare, anúncio fora do ar). Bloco que não é JSON válido é ignorado.
+function descriptionFromJsonLd(blocos) {
+    for (const bloco of blocos || []) {
         let json;
         try {
-            json = JSON.parse(m[1]);
+            json = JSON.parse(bloco);
         } catch (e) {
             continue;
         }
@@ -61,6 +60,12 @@ function extractDescription(html) {
         }
     }
     return null;
+}
+
+// Mesma coisa, a partir do HTML inteiro da página.
+function extractDescription(html) {
+    const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
+    return descriptionFromJsonLd([...String(html || '').matchAll(re)].map((m) => m[1]));
 }
 
 const VERIFICACAO_SYSTEM_PROMPT = `Você revisa anúncios do OLX pra um app que mostra oportunidades de compra (pra uso próprio ou revenda). Estes anúncios têm preço MUITO abaixo da média de mercado: sua tarefa é checar DOIS problemas independentes que a descrição pode revelar. Dê peso igual aos dois — não são casos raros dentro de "defeito", são duas perguntas separadas que você responde pra TODO anúncio.
@@ -135,6 +140,7 @@ function parseVerdicts(rawText, ads) {
 module.exports = {
     LUCRO_MIN_VERIFICACAO,
     profitPct,
+    descriptionFromJsonLd,
     extractDescription,
     VERIFICACAO_SYSTEM_PROMPT,
     buildVerificationMessage,

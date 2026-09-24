@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { profitPct, extractDescription, buildVerificationMessage, parseVerdicts } = require('./descricao');
+const { profitPct, descriptionFromJsonLd, extractDescription, buildVerificationMessage, parseVerdicts } = require('./descricao');
 
 test('profitPct é (referência - preço) / preço, com 1 casa decimal', () => {
     assert.equal(profitPct(1000, 1500), 50);
@@ -42,6 +42,18 @@ test('extractDescription devolve null sem descrição (página de bloqueio, anú
     assert.equal(extractDescription(pagina({ description: '   ' })), null);
     assert.equal(extractDescription(''), null);
     assert.equal(extractDescription(undefined), null);
+});
+
+test('descriptionFromJsonLd lê os blocos JSON-LD que o navegador devolve', () => {
+    const blocos = ['{quebrado', '{"@type":"BreadcrumbList"}', JSON.stringify({ description: 'PS4 Slim<br>com 2 controles' })];
+    assert.equal(descriptionFromJsonLd(blocos), 'PS4 Slim\ncom 2 controles');
+    assert.equal(descriptionFromJsonLd([JSON.stringify([{ '@type': 'Offer' }, { description: 'Em array' }])]), 'Em array');
+});
+
+test('descriptionFromJsonLd sem blocos (página de bloqueio) é null', () => {
+    assert.equal(descriptionFromJsonLd([]), null);
+    assert.equal(descriptionFromJsonLd(undefined), null);
+    assert.equal(descriptionFromJsonLd(['{"@type":"Product"}']), null);
 });
 
 const ads = [

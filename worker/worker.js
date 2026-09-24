@@ -35,7 +35,7 @@ const { defeitoNoTitulo, mantemDefeituosos, planHistory, capOpportunityLevelDefe
 const {
     LUCRO_MIN_VERIFICACAO,
     profitPct,
-    extractDescription,
+    descriptionFromJsonLd,
     VERIFICACAO_SYSTEM_PROMPT,
     buildVerificationMessage,
     parseVerdicts,
@@ -123,14 +123,14 @@ const CATEGORIA_OLX_PARA_INTERNA = {
 // "scrapping python\app.py") funciona sem escaping manual e sem risco de
 // injeção de comando.
 // ------------------------------------------------------------------
-async function runPythonScraper(produto, { headless = false } = {}) {
+async function runPythonScript(scriptArgs) {
     if (!PYTHON_SCRIPT_PATH) {
         throw new Error('PYTHON_SCRIPT_PATH não está definido. Configure o caminho do app.py no .env.');
     }
 
     const scriptDir = path.dirname(PYTHON_SCRIPT_PATH);
     const startedAt = Date.now();
-    const args = [PYTHON_SCRIPT_PATH, ...scraperArgs(produto, { headless })];
+    const args = [PYTHON_SCRIPT_PATH, ...scriptArgs];
 
     console.log(`[scraper] Iniciando: ${PYTHON_EXECUTABLE} ${args.map((a) => `"${a}"`).join(' ')}`);
 
@@ -194,6 +194,11 @@ async function runPythonScraper(produto, { headless = false } = {}) {
     }
 
     return payload;
+}
+
+// Raspagem de UM produto (busca no OLX).
+async function runPythonScraper(produto, { headless = false } = {}) {
+    return runPythonScript(scraperArgs(produto, { headless }));
 }
 
 // O app.py nomeia o arquivo de saída como busca-estado-condicao-timestamp.json
@@ -1151,42 +1156,48 @@ async function dropDefectiveFromDatabase(urls, chunkSize = 40) {
 // verificar (OLX bloqueou, Haiku falhou) segue pendente pro próximo ciclo.
 // ------------------------------------------------------------------
 
-// Baixa a página do anúncio via curl (mesmo motivo do curlStatus: o Cloudflare
-// do OLX barra o fetch). Devolve { status, body }, ou null se o curl falhou.
-function curlPage(url) {
-    return new Promise((resolve) => {
-        execFile(
-            'curl',
-            ['-s', '-L', '-A', BROWSER_UA, '--max-time', String(Math.ceil(OLX_PROBE_TIMEOUT_MS / 1000)),
-                '-w', '\n__STATUS__%{http_code}', url],
-            { timeout: OLX_PROBE_TIMEOUT_MS + 5000, windowsHide: true, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' },
-            (err, stdout) => {
-                if (err) return resolve(null);
-                const m = /\n__STATUS__(\d{3})$/.exec(stdout);
-                if (!m) return resolve(null);
-                resolve({ status: Number(m[1]), body: stdout.slice(0, m.index) });
-            }
-        );
-    });
-}
+// Lê a descrição dos anúncios pelo Chrome do scraper (app.py --descricoes). O curl
+// não serve: o Cloudflare do OLX barra as páginas de anúncio com 403 (no Actions,
+// sempre). Usa o link completo da raspagem deste ciclo quando tem (linksOlx), senão
+// o /vi/<id>. Devolve Map url canônica -> descrição, só com os que deu pra ler;
+// bloqueado, fora do ar ou sem descrição fica de fora e segue pendente.
+async function fetchDescriptionsViaBrowser(ads, { linksOlx = new Map(), headless = false } = {}) {
+    const alvos = ads
+        .map((ad) => {
+            const id = extractAdId(ad.url);
+            return { url: ad.url, link: linksOlx.get(ad.url) || (id && `https://www.olx.com.br/vi/${id}`) };
+        })
+        .filter((a) => a.link);
+    const descricoes = new Map();
+    if (alvos.length === 0) return descricoes;
 
-// Descrição do anúncio, ou null se não deu pra ler. O Cloudflare do OLX barra
-// com 403 quase toda requisição na forma curta /vi/<id> (~1 em 6 passa); o link
-// completo do anúncio (pe.olx.com.br/.../slug-<id>) passa cerca do dobro (~2 em 5):
-// linkOlx é esse link, vindo da raspagem deste ciclo. Sem ele (anúncio que não
-// apareceu na raspagem atual), só resta o /vi/<id>.
-async function fetchAdDescription(url, linkOlx = null) {
-    const id = extractAdId(url);
-    if (!id) return null;
-    const curto = `https://www.olx.com.br/vi/${id}`;
-    const tentativas = linkOlx ? [linkOlx, linkOlx, linkOlx, curto] : [curto, curto, curto];
-    for (const [i, alvo] of tentativas.entries()) {
-        if (i > 0) await new Promise((resolve) => setTimeout(resolve, 3000));
-        const page = await curlPage(alvo);
-        if (page && page.status === 200) return extractDescription(page.body);
-        if (page && page.status !== 403) return null; // fora do ar etc.: os strikes cuidam
+    // O app.py grava a resposta ao lado da entrada, como <entrada>-resultado.json.
+    const entrada = path.join(os.tmpdir(), `brik-descricoes-${process.pid}-${Date.now()}.json`);
+    fs.writeFileSync(entrada, JSON.stringify(alvos.map((a) => a.link)));
+    try {
+        const { resultados = [] } = await runPythonScript(['--descricoes', entrada, ...(headless ? ['--headless'] : [])]);
+        const porLink = new Map(resultados.map((r) => [r.link, r]));
+        const falhas = new Map(); // título da página -> quantos anúncios
+        for (const { url, link } of alvos) {
+            const r = porLink.get(link);
+            const texto = r ? descriptionFromJsonLd(r.json_ld) : null;
+            if (texto) {
+                descricoes.set(url, texto);
+            } else {
+                const titulo = r?.titulo_pagina || 'sem resposta';
+                falhas.set(titulo, (falhas.get(titulo) || 0) + 1);
+            }
+        }
+        if (falhas.size > 0) {
+            console.warn(`  Sem descrição, por título da página: ${[...falhas].map(([t, n]) => `"${t}" x${n}`).join(', ')}`);
+        }
+    } catch (err) {
+        console.error(`  ⚠ Falha ao ler as descrições pelo navegador: ${err.message}`);
+    } finally {
+        fs.rmSync(entrada, { force: true });
+        fs.rmSync(entrada.replace(/\.json$/, '-resultado.json'), { force: true });
     }
-    return null;
+    return descricoes;
 }
 
 // Grava o veredito no cache (classificacoes_ia), em lotes de 40, pra sobreviver mesmo
@@ -1202,9 +1213,8 @@ async function cacheVeredito(coluna, urls) {
     }
 }
 
-// linksOlx: Map url canônica -> link completo do anúncio na raspagem deste ciclo
-// (ver fetchAdDescription).
-async function verifyHighProfitDescriptions(category, linksOlx = new Map()) {
+// leitura: { linksOlx, headless } repassado a fetchDescriptionsViaBrowser.
+async function verifyHighProfitDescriptions(category, leitura = {}) {
     // Anúncio já marcado com defeito pelo título (iPhone) fica de fora: já aparece
     // com aviso no card e não precisa gastar leitura nem Haiku.
     const { data: pendentes, error } = await supabase
@@ -1222,13 +1232,11 @@ async function verifyHighProfitDescriptions(category, linksOlx = new Map()) {
 
     console.log(`  Verificando a descrição de ${pendentes.length} anúncio(s) com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
 
-    const comDescricao = [];
-    let semDescricao = 0;
-    for (let i = 0; i < pendentes.length; i += OLX_PROBE_CONCURRENCY) {
-        const grupo = pendentes.slice(i, i + OLX_PROBE_CONCURRENCY);
-        const textos = await Promise.all(grupo.map((ad) => fetchAdDescription(ad.url, linksOlx.get(ad.url))));
-        grupo.forEach((ad, j) => (textos[j] ? comDescricao.push({ ...ad, description: textos[j] }) : semDescricao++));
-    }
+    const descricoes = await fetchDescriptionsViaBrowser(pendentes, leitura);
+    const comDescricao = pendentes
+        .filter((ad) => descricoes.has(ad.url))
+        .map((ad) => ({ ...ad, description: descricoes.get(ad.url) }));
+    const semDescricao = pendentes.length - comDescricao.length;
     if (semDescricao > 0) {
         console.warn(`  ⚠ ${semDescricao} anúncio(s) sem descrição legível agora — ficam pendentes pro próximo ciclo.`);
     }
@@ -1329,7 +1337,7 @@ async function verifyHighProfitDescriptions(category, linksOlx = new Map()) {
 // Processa UM produto já raspado: cache → Haiku → regras de variant → médias →
 // anuncios_ativos/historico_precos. NÃO trata strikes: isso é feito no fim do
 // ciclo, por categoria (ver run()).
-async function processProduct(category, rawItemsRaw, condition, defeitoUrls = [], linksOlx = new Map()) {
+async function processProduct(category, rawItemsRaw, condition, defeitoUrls = [], leituraDescricao = {}) {
     await dropDefectiveFromDatabase(defeitoUrls);
 
     // Deduplica por url — proteção extra contra duplicatas na raspagem
@@ -1410,7 +1418,7 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
 
         if (VERIFY_DESCRIPTIONS) {
             console.log(`5b. Verificando descrição dos anúncios com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
-            await verifyHighProfitDescriptions(category, linksOlx);
+            await verifyHighProfitDescriptions(category, leituraDescricao);
         }
     }
 
@@ -1443,7 +1451,7 @@ async function rodarProduto(produto, { headless, dryRun, tracker }) {
 
     if (dryRun) return { nome, ok: true, detalhe: `${items.length} itens (dry-run)`, completo };
 
-    const r = await processProduct(category, items, condition, defeitoUrls, linksOlx);
+    const r = await processProduct(category, items, condition, defeitoUrls, { linksOlx, headless });
     return { nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo };
 }
 
@@ -1537,4 +1545,4 @@ if (require.main === module) {
         });
 }
 
-module.exports = { classifyBatch, fetchAllActiveRows, extractAdId, fetchAdDescription };
+module.exports = { classifyBatch, fetchAllActiveRows, extractAdId, fetchDescriptionsViaBrowser };
