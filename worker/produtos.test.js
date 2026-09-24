@@ -16,15 +16,24 @@ const ps4 = PRODUTOS.find((p) => p.busca === 'ps4');
 const consoles = PRODUTOS.filter((p) => p.categoria === 'games');
 
 test('parseArgs: buscas, --paginas (as duas formas), --dry-run e --headless', () => {
-    assert.deepEqual(parseArgs([]), { buscas: [], paginas: null, dryRun: false, headless: false });
+    assert.deepEqual(parseArgs([]), { buscas: [], paginas: null, primeiras: false, dryRun: false, headless: false });
     assert.deepEqual(parseArgs(['PS5', 'xbox', '--paginas', '2', '--dry-run', '--headless']),
-        { buscas: ['ps5', 'xbox'], paginas: 2, dryRun: true, headless: true });
+        { buscas: ['ps5', 'xbox'], paginas: 2, primeiras: false, dryRun: true, headless: true });
     assert.equal(parseArgs(['--paginas=3']).paginas, 3);
+});
+
+test('parseArgs: --primeiras (as duas formas)', () => {
+    assert.deepEqual(parseArgs(['--primeiras', '5']),
+        { buscas: [], paginas: 5, primeiras: true, dryRun: false, headless: false });
+    assert.deepEqual(parseArgs(['--primeiras=2']), parseArgs(['--primeiras', '2']));
 });
 
 test('parseArgs rejeita argumento inválido', () => {
     assert.throws(() => parseArgs(['--paginas', 'abc']), /--paginas/);
     assert.throws(() => parseArgs(['--paginas', '0']), /--paginas/);
+    assert.throws(() => parseArgs(['--primeiras', '0']), /--primeiras/);
+    assert.throws(() => parseArgs(['--primeiras']), /--primeiras/);
+    assert.throws(() => parseArgs(['--paginas', '1', '--primeiras', '5']), /só um/);
     assert.throws(() => parseArgs(['--foo']), /desconhecido/);
 });
 
@@ -47,10 +56,26 @@ test('selectProdutos: filtro por busca não é parcial; --paginas é', () => {
     assert.throws(() => selectProdutos(PRODUTOS, parseArgs(['naoexiste'])), /fora da lista/);
 });
 
+test('selectProdutos: --primeiras limita as páginas, marca os produtos e é parcial', () => {
+    const r = selectProdutos(PRODUTOS, parseArgs(['--primeiras', '5']));
+    assert.equal(r.selecionados.length, PRODUTOS.length);
+    assert.ok(r.selecionados.every((p) => p.paginas === 5 && p.primeiras === true));
+    assert.equal(r.parcial, true);
+    assert.ok(PRODUTOS.every((p) => !p.primeiras), 'não deve alterar a lista original');
+});
+
 test('scraperArgs monta os argumentos do app.py', () => {
     assert.deepEqual(scraperArgs(ps5),
-        ['--busca', 'ps5', '--estado', 'pe', '--categoria', 'games', '--condicao', 'usado', '--paginas', '20']);
+        ['--busca', 'ps5', '--estado', 'pe', '--categoria', 'games', '--condicao', 'usado', '--paginas', String(ps5.paginas)]);
     assert.ok(scraperArgs(ps5, { headless: true }).includes('--headless'));
+    assert.ok(!scraperArgs(ps5).includes('--primeiras'));
+});
+
+test('scraperArgs repassa --primeiras ao app.py', () => {
+    const [recente] = selectProdutos(PRODUTOS, parseArgs(['ps5', '--primeiras', '5'])).selecionados;
+    const args = scraperArgs(recente);
+    assert.equal(args[args.indexOf('--paginas') + 1], '5');
+    assert.ok(args.includes('--primeiras'));
 });
 
 test('parseResultPath acha a linha RESULTADO_JSON (última vence, tolera CRLF)', () => {

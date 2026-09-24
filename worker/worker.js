@@ -1407,11 +1407,12 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
 // Ciclo completo: raspa e grava cada produto de PRODUTOS em sequência — quando
 // um termina, o próximo já começa — e só no fim aplica os strikes.
 //
-// Uso: node worker.js [busca ...] [--paginas N] [--dry-run] [--headless]
+// Uso: node worker.js [busca ...] [--paginas N | --primeiras N] [--dry-run] [--headless]
 //   node worker.js                 -> todos os produtos
 //   node worker.js iphone          -> só o iPhone (categoria inteira: aplica strikes nela)
 //   node worker.js ps5 xbox        -> só esses; strike só nas categorias 100% raspadas (aqui, nenhuma)
-//   node worker.js --paginas 1     -> teste rápido; raspagem parcial nunca aplica strikes
+//   node worker.js --paginas 1     -> teste rápido (última página); raspagem parcial nunca aplica strikes
+//   node worker.js --primeiras 5   -> só as 5 primeiras páginas (anúncios novos); também sem strikes
 //   node worker.js --dry-run       -> só raspa e valida; não usa Haiku nem grava no banco
 async function run() {
     const opts = parseArgs(process.argv.slice(2));
@@ -1423,7 +1424,8 @@ async function run() {
 
     console.log(
         `Ciclo com ${selecionados.length} produto(s): ${selecionados.map((p) => p.busca).join(', ')}` +
-        `${opts.dryRun ? ' [DRY-RUN]' : ''}${parcial ? ' [--paginas: raspagem parcial, sem strikes]' : ''}`
+        `${opts.dryRun ? ' [DRY-RUN]' : ''}` +
+        `${parcial ? ` [${opts.primeiras ? 'primeiras' : 'últimas'} ${opts.paginas} página(s): raspagem parcial, sem strikes]` : ''}`
     );
 
     for (const [i, produto] of selecionados.entries()) {

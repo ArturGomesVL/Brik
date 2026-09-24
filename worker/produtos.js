@@ -46,18 +46,23 @@ function withScrapeCondition(items, condition) {
 const produtoKey = (p) => `${p.busca}|${p.categoria}|${p.condicao}|${p.estado}`;
 const rotulo = (p) => `${decodeURIComponent(p.busca)} (${p.categoria}, ${p.condicao}, ${p.estado.toUpperCase()})`;
 
-// node worker.js [busca ...] [--paginas N] [--dry-run] [--headless]
+// node worker.js [busca ...] [--paginas N | --primeiras N] [--dry-run] [--headless]
+//   --paginas N   -> as N ÚLTIMAS páginas da busca (o app.py raspa da última pra primeira)
+//   --primeiras N -> as N PRIMEIRAS páginas (anúncios mais recentes)
 function parseArgs(argv) {
-    const opts = { buscas: [], paginas: null, dryRun: false, headless: false };
+    const opts = { buscas: [], paginas: null, primeiras: false, dryRun: false, headless: false };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === '--dry-run') opts.dryRun = true;
         else if (arg === '--headless') opts.headless = true;
-        else if (arg === '--paginas' || arg.startsWith('--paginas=')) {
+        else if (/^--(paginas|primeiras)(=|$)/.test(arg)) {
+            const flag = arg.split('=')[0];
             const valor = arg.includes('=') ? arg.split('=')[1] : argv[++i];
             const n = Number(valor);
-            if (!Number.isInteger(n) || n < 1) throw new Error(`--paginas precisa de um inteiro >= 1 (recebido: ${valor})`);
+            if (!Number.isInteger(n) || n < 1) throw new Error(`${flag} precisa de um inteiro >= 1 (recebido: ${valor})`);
+            if (opts.paginas !== null) throw new Error('Use só um entre --paginas e --primeiras.');
             opts.paginas = n;
+            opts.primeiras = flag === '--primeiras';
         } else if (arg.startsWith('--')) {
             throw new Error(`Argumento desconhecido: ${arg}`);
         } else {
@@ -68,7 +73,7 @@ function parseArgs(argv) {
 }
 
 // Aplica o filtro por busca e o limite de páginas. `parcial` = as páginas foram
-// limitadas (--paginas), então NENHUMA raspagem viu tudo e não pode haver strike.
+// limitadas (--paginas/--primeiras), então NENHUMA raspagem viu tudo e não pode haver strike.
 // Rodar só um subconjunto de produtos não é "parcial": o rastreador de strikes
 // libera cada categoria cujas buscas foram todas raspadas e pula as demais.
 function selectProdutos(produtos, opts) {
@@ -82,7 +87,7 @@ function selectProdutos(produtos, opts) {
         selecionados = produtos.filter((p) => opts.buscas.includes(p.busca));
     }
     if (opts.paginas !== null) {
-        selecionados = selecionados.map((p) => ({ ...p, paginas: opts.paginas }));
+        selecionados = selecionados.map((p) => ({ ...p, paginas: opts.paginas, primeiras: opts.primeiras }));
     }
     return { selecionados, parcial: opts.paginas !== null };
 }
@@ -95,6 +100,7 @@ function scraperArgs(produto, { headless = false } = {}) {
         '--condicao', produto.condicao,
         '--paginas', String(produto.paginas),
     ];
+    if (produto.primeiras) args.push('--primeiras');
     if (headless) args.push('--headless');
     return args;
 }
@@ -141,14 +147,14 @@ function createStrikeTracker(configurados, categoriaInterna) {
             const cat = categoriaInterna(produto);
             if (cat) estado(cat).problemas.push(`${produto.busca}: ${motivo}`);
         },
-        // parcial: páginas limitadas por --paginas -> nenhuma categoria é segura.
+        // parcial: páginas limitadas por --paginas/--primeiras -> nenhuma categoria é segura.
         resolve({ parcial = false } = {}) {
             const prontas = [];
             const puladas = [];
             for (const [cat, chaves] of esperados) {
                 const e = vistos.get(cat) || { urls: new Set(), ok: new Set(), problemas: [] };
                 if (parcial) {
-                    puladas.push({ category: cat, motivo: 'páginas limitadas por --paginas (raspagem parcial)' });
+                    puladas.push({ category: cat, motivo: 'páginas limitadas (raspagem parcial)' });
                 } else if (e.problemas.length > 0) {
                     puladas.push({ category: cat, motivo: e.problemas.join('; ') });
                 } else if ([...chaves].some((k) => !e.ok.has(k))) {
