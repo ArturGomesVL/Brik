@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { profitPct, descriptionFromJsonLd, extractDescription, buildVerificationMessage, parseVerdicts } = require('./descricao');
+const { profitPct, descriptionFromJsonLd, adPageStatus, extractDescription, buildVerificationMessage, parseVerdicts } = require('./descricao');
 
 test('profitPct é (referência - preço) / preço, com 1 casa decimal', () => {
     assert.equal(profitPct(1000, 1500), 50);
@@ -54,6 +54,24 @@ test('descriptionFromJsonLd sem blocos (página de bloqueio) é null', () => {
     assert.equal(descriptionFromJsonLd([]), null);
     assert.equal(descriptionFromJsonLd(undefined), null);
     assert.equal(descriptionFromJsonLd(['{"@type":"Product"}']), null);
+});
+
+const produto = (id) => JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', identifier: id, description: 'ok' });
+
+test('adPageStatus: JSON-LD do produto com o mesmo id é anúncio no ar', () => {
+    assert.equal(adPageStatus({ titulo_pagina: 'PS4 Slim | OLX', json_ld: ['{"@type":"BreadcrumbList"}', produto(1530328244)] }, '1530328244'), 'alive');
+    assert.equal(adPageStatus({ titulo_pagina: 'PS4', json_ld: [JSON.stringify({ '@type': 'Product' })] }, '1530328244'), 'alive');
+});
+
+test('adPageStatus: "Anúncio não encontrado" é fora do ar', () => {
+    assert.equal(adPageStatus({ titulo_pagina: 'Anúncio não encontrado | OLX', json_ld: [] }, '1'), 'gone');
+});
+
+test('adPageStatus: bloqueio, produto de outro id ou sem resposta é inconclusivo', () => {
+    assert.equal(adPageStatus({ titulo_pagina: 'Attention Required! | Cloudflare', json_ld: [] }, '1'), 'inconclusive');
+    assert.equal(adPageStatus({ titulo_pagina: 'Outro', json_ld: [produto(999)] }, '1530328244'), 'inconclusive');
+    assert.equal(adPageStatus({ titulo_pagina: '', json_ld: ['{quebrado'] }, '1'), 'inconclusive');
+    assert.equal(adPageStatus(undefined, '1'), 'inconclusive');
 });
 
 const ads = [
