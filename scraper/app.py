@@ -210,6 +210,15 @@ class SemMaisResultados(Exception):
 
 
 
+def titulo_pagina(driver) -> str:
+    """Título da página aberta, pro log de falha: 'Attention Required! | Cloudflare'
+    é bloqueio, 'Just a moment...' é desafio do Cloudflare, vazio é página que não carregou."""
+    try:
+        return f'título da página: "{driver.title}"'
+    except Exception:
+        return 'título da página indisponível'
+
+
 def descobrir_ultima_pagina(driver) -> Optional[int]:
     """
     Descobre o número da última página disponível na busca do OLX.
@@ -258,7 +267,7 @@ def descobrir_ultima_pagina(driver) -> Optional[int]:
             return ultima
 
     except Exception as e:
-        logger.warning(f'Não foi possível descobrir a última página: {e}')
+        logger.warning(f'Não foi possível descobrir a última página ({titulo_pagina(driver)}): {e}')
     return None
 
 
@@ -310,7 +319,8 @@ def raspar_pagina_com_retry(driver, url: str, condicao: str) -> Optional[list[di
         except SemMaisResultados:
             raise
         except TimeoutException:
-            logger.error(f'Timeout ao carregar página (tentativa {tentativa}/{total_tentativas}): {url}')
+            logger.error(f'Timeout ao carregar página (tentativa {tentativa}/{total_tentativas}, '
+                         f'{titulo_pagina(driver)}): {url}')
         except WebDriverException as e:
             logger.error(f'Erro do WebDriver (tentativa {tentativa}/{total_tentativas}): {e}')
         except Exception as e:
