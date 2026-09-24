@@ -13,7 +13,7 @@
 // Rodar manualmente por enquanto: node worker.js
 require('dotenv').config(); console.log('SUPABASE_URL:', JSON.stringify(process.env.SUPABASE_URL));
 const { createClient } = require('@supabase/supabase-js');
-const { execFile, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -33,9 +33,9 @@ const {
 } = require('./produtos');
 const { defeitoNoTitulo, mantemDefeituosos, planHistory, capOpportunityLevelDefeituoso } = require('./defeito');
 const {
-    LUCRO_MIN_VERIFICACAO,
     profitPct,
     descriptionFromJsonLd,
+    adPageStatus,
     VERIFICACAO_SYSTEM_PROMPT,
     buildVerificationMessage,
     parseVerdicts,
@@ -79,25 +79,21 @@ const DESCONTO_MAX_PLAUSIVEL = 0.85; // > 85% abaixo da mediana do segmento → 
 const ACIMA_MAX_PLAUSIVEL = 2.5;     // > 2,5x a mediana do segmento → descarta
 
 // Antes de apagar um anúncio por 3 strikes, o worker confirma direto no
-// OLX se ele saiu mesmo do ar (a raspagem perde anúncio ativo por
-// re-ranqueamento/hiccup, não só por venda). STRIKE_VERIFY=false volta ao
-// comportamento antigo (apaga com 3 strikes sem confirmar).
+// OLX (abrindo a página no Chrome do scraper) se ele saiu mesmo do ar: a raspagem
+// perde anúncio ativo por re-ranqueamento/hiccup, não só por venda.
+// STRIKE_VERIFY=false volta ao comportamento antigo (apaga com 3 strikes sem confirmar).
 const VERIFY_STRIKES_ON_OLX = process.env.STRIKE_VERIFY !== 'false';
-const OLX_PROBE_CONCURRENCY = 3;
-const OLX_PROBE_TIMEOUT_MS = 15000;
-// Máximo de verificações no OLX por ciclo; o excedente é verificado nos
-// ciclos seguintes (raspagem quebrada é barrada pela trava de cobertura).
+// Máximo de verificações no OLX por ciclo (~7s cada); o excedente é verificado
+// nos ciclos seguintes (raspagem quebrada é barrada pela trava de cobertura).
 const OLX_PROBE_MAX = 250;
-const BROWSER_UA =
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-// Anúncio com lucro >= LUCRO_MIN_VERIFICACAO% tem a descrição lida no OLX e
-// julgada pelo Haiku; com defeito (ou algo que não é o produto), é removido.
-// VERIFY_DESCRIPTIONS=false desliga a etapa.
+// Todo anúncio do feed (opportunity_level diferente de 'nenhuma') tem a descrição
+// lida no OLX e julgada pelo Haiku; com defeito (ou algo que não é o produto), é
+// removido — ou, no iPhone, marcado com defeito. VERIFY_DESCRIPTIONS=false desliga.
 const VERIFY_DESCRIPTIONS = process.env.VERIFY_DESCRIPTIONS !== 'false';
 const DESCRIPTION_BATCH_SIZE = 10;
 // Máximo de anúncios verificados por ciclo; o excedente fica pendente
-// (verified_at nulo) e é pego nos ciclos seguintes, maior lucro primeiro.
+// (verified_at nulo) e é pego nos ciclos seguintes, maior lucro primeiro (~7s cada).
 const DESCRIPTION_MAX_PER_CYCLE = 60;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
@@ -236,7 +232,7 @@ function bestImageFromSrcset(srcset) {
 // título cria uma linha duplicada em anuncios_ativos e a linha antiga
 // fica com o preço/strikes congelados pra sempre (a antiga nunca é
 // vista de novo com essa URL, então nunca é atualizada nem apagada —
-// o probeOlxAd do passo de strikes confirma que o ID está ativo e só
+// a confirmação no OLX do passo de strikes vê que o ID está ativo e só
 // zera o strike, sem corrigir o preço). Mesma lógica que já existia no
 // pageFunction do Apify, agora aplicada aqui porque o Apify foi
 // removido e o scraper Python (app.py) não normaliza o href.
@@ -881,49 +877,15 @@ function extractAdId(url) {
     return m ? m[1] : null;
 }
 
-// GET via curl (não via fetch): o Cloudflare do OLX bloqueia o
-// fingerprint TLS do undici/fetch com 403, mas deixa o curl passar.
-// Retorna o status HTTP, ou null se o curl falhou/não existe.
-function curlStatus(url) {
-    return new Promise((resolve) => {
-        execFile(
-            'curl',
-            [
-                '-s', '-o', os.devNull, '-w', '%{http_code}',
-                '-A', BROWSER_UA,
-                '-L', '--max-time', String(Math.ceil(OLX_PROBE_TIMEOUT_MS / 1000)),
-                url,
-            ],
-            { timeout: OLX_PROBE_TIMEOUT_MS + 5000, windowsHide: true },
-            (err, stdout) => {
-                if (err) return resolve(null);
-                const code = parseInt(String(stdout).trim(), 10);
-                resolve(Number.isFinite(code) ? code : null);
-            }
-        );
-    });
-}
-
-// Confirma direto no OLX se o anúncio ainda está no ar. A forma curta
-// /vi/<id> responde bem mesmo de IP de datacenter:
-//   200      -> anúncio ativo            => 'alive'  (não dar strike)
-//   410/404  -> "Anúncio não encontrado" => 'gone'   (pode apagar)
-//   null / 403 / 5xx / sem id            => 'inconclusive' (adia)
-async function probeOlxAd(url) {
-    const id = extractAdId(url);
-    if (!id) return 'inconclusive';
-    const status = await curlStatus(`https://www.olx.com.br/vi/${id}`);
-    if (status === 200) return 'alive';
-    if (status === 410 || status === 404) return 'gone';
-    return 'inconclusive';
-}
-
-async function probeMany(rows) {
+// Confirma no OLX, pelo navegador, se os anúncios ainda estão no ar (ver
+// adPageStatus). Devolve Map url -> 'alive' | 'gone' | 'inconclusive'.
+async function probeManyViaBrowser(rows, { headless = false } = {}) {
+    const alvos = rows.map((row) => ({ url: row.url, id: extractAdId(row.url) }));
+    const links = alvos.filter((a) => a.id).map((a) => `https://www.olx.com.br/vi/${a.id}`);
+    const paginas = await readAdPagesViaBrowser(links, { headless });
     const verdicts = new Map();
-    for (let i = 0; i < rows.length; i += OLX_PROBE_CONCURRENCY) {
-        const batch = rows.slice(i, i + OLX_PROBE_CONCURRENCY);
-        const results = await Promise.all(batch.map((row) => probeOlxAd(row.url)));
-        batch.forEach((row, j) => verdicts.set(row.url, results[j]));
+    for (const { url, id } of alvos) {
+        verdicts.set(url, id ? adPageStatus(paginas.get(`https://www.olx.com.br/vi/${id}`), id) : 'inconclusive');
     }
     return verdicts;
 }
@@ -965,7 +927,7 @@ async function deleteActiveByUrl(urls, chunkSize = 40) {
     }
 }
 
-async function handleStrikes(category, currentUrls) {
+async function handleStrikes(category, currentUrls, { headless = false } = {}) {
     const activeList = await fetchAllActiveRows(category);
 
     const currentSet = new Set(currentUrls);
@@ -1030,7 +992,7 @@ async function handleStrikes(category, currentUrls) {
             `   Verificando ${toProbe.length} candidato(s) a exclusão direto no OLX` +
             (adiados > 0 ? ` (${adiados} ficam pro próximo ciclo)` : '') + '...'
         );
-        const verdicts = await probeMany(toProbe);
+        const verdicts = await probeManyViaBrowser(toProbe, { headless });
         for (const row of toProbe) {
             const verdict = verdicts.get(row.url);
             if (verdict === 'gone') {
@@ -1109,8 +1071,8 @@ function printTop(counts, limit) {
 }
 
 // Um anúncio que já estava no banco e agora é rejeitado (regra nova, ou
-// reclassificação) sairia da raspagem "válida" e acabaria zumbi — o
-// probeOlxAd do passo de strikes o confirmaria ativo e zeraria o strike
+// reclassificação) sairia da raspagem "válida" e acabaria zumbi — a
+// confirmação no OLX do passo de strikes o veria ativo e zeraria o strike
 // pra sempre. Remove direto.
 async function removeRejectedFromActive(urls, chunkSize = 40) {
     const removed = [];
@@ -1149,18 +1111,40 @@ async function dropDefectiveFromDatabase(urls, chunkSize = 40) {
 }
 
 // ------------------------------------------------------------------
-// Verificação da descrição — anúncios com lucro >= LUCRO_MIN_VERIFICACAO% e
-// ainda não verificados: abre o anúncio no OLX, lê a descrição e o Haiku diz se
-// há defeito ou algo que não condiz com o produto. Reprovado sai do banco (e
-// leva o histórico de preço); aprovado ganha verified_at. O que não deu pra
-// verificar (OLX bloqueou, Haiku falhou) segue pendente pro próximo ciclo.
+// Verificação da descrição — anúncios do feed ainda não verificados: abre o
+// anúncio no OLX, lê a descrição e o Haiku diz se há defeito ou algo que não
+// condiz com o produto. Reprovado sai do banco (e leva o histórico de preço);
+// aprovado ganha verified_at. O que não deu pra verificar (OLX bloqueou, Haiku
+// falhou) segue pendente pro próximo ciclo.
 // ------------------------------------------------------------------
 
-// Lê a descrição dos anúncios pelo Chrome do scraper (app.py --descricoes). O curl
-// não serve: o Cloudflare do OLX barra as páginas de anúncio com 403 (no Actions,
-// sempre). Usa o link completo da raspagem deste ciclo quando tem (linksOlx), senão
-// o /vi/<id>. Devolve Map url canônica -> descrição, só com os que deu pra ler;
-// bloqueado, fora do ar ou sem descrição fica de fora e segue pendente.
+// Abre páginas de anúncio no Chrome do scraper (app.py --anuncios). O curl não
+// serve: o Cloudflare do OLX barra as páginas de anúncio com 403 (no Actions,
+// sempre). Devolve Map link -> { titulo_pagina, json_ld }; se o Python falhar,
+// loga e devolve o Map vazio (quem chamou trata tudo como não lido).
+async function readAdPagesViaBrowser(links, { headless = false } = {}) {
+    const paginas = new Map();
+    if (links.length === 0) return paginas;
+
+    // O app.py grava a resposta ao lado da entrada, como <entrada>-resultado.json.
+    const entrada = path.join(os.tmpdir(), `brik-anuncios-${process.pid}-${Date.now()}.json`);
+    fs.writeFileSync(entrada, JSON.stringify(links));
+    try {
+        const { resultados = [] } = await runPythonScript(['--anuncios', entrada, ...(headless ? ['--headless'] : [])]);
+        resultados.forEach((r) => paginas.set(r.link, r));
+    } catch (err) {
+        console.error(`  ⚠ Falha ao abrir as páginas de anúncio pelo navegador: ${err.message}`);
+    } finally {
+        fs.rmSync(entrada, { force: true });
+        fs.rmSync(entrada.replace(/[.]json$/, '-resultado.json'), { force: true });
+    }
+    return paginas;
+}
+
+// Descrição dos anúncios. Usa o link completo da raspagem deste ciclo quando tem
+// (linksOlx), senão o /vi/<id>. Devolve Map url canônica -> descrição, só com os
+// que deu pra ler; bloqueado, fora do ar ou sem descrição fica de fora e segue
+// pendente (o log agrupa esses pelo título da página).
 async function fetchDescriptionsViaBrowser(ads, { linksOlx = new Map(), headless = false } = {}) {
     const alvos = ads
         .map((ad) => {
@@ -1168,34 +1152,22 @@ async function fetchDescriptionsViaBrowser(ads, { linksOlx = new Map(), headless
             return { url: ad.url, link: linksOlx.get(ad.url) || (id && `https://www.olx.com.br/vi/${id}`) };
         })
         .filter((a) => a.link);
-    const descricoes = new Map();
-    if (alvos.length === 0) return descricoes;
+    const paginas = await readAdPagesViaBrowser(alvos.map((a) => a.link), { headless });
 
-    // O app.py grava a resposta ao lado da entrada, como <entrada>-resultado.json.
-    const entrada = path.join(os.tmpdir(), `brik-descricoes-${process.pid}-${Date.now()}.json`);
-    fs.writeFileSync(entrada, JSON.stringify(alvos.map((a) => a.link)));
-    try {
-        const { resultados = [] } = await runPythonScript(['--descricoes', entrada, ...(headless ? ['--headless'] : [])]);
-        const porLink = new Map(resultados.map((r) => [r.link, r]));
-        const falhas = new Map(); // título da página -> quantos anúncios
-        for (const { url, link } of alvos) {
-            const r = porLink.get(link);
-            const texto = r ? descriptionFromJsonLd(r.json_ld) : null;
-            if (texto) {
-                descricoes.set(url, texto);
-            } else {
-                const titulo = r?.titulo_pagina || 'sem resposta';
-                falhas.set(titulo, (falhas.get(titulo) || 0) + 1);
-            }
+    const descricoes = new Map();
+    const falhas = new Map(); // título da página -> quantos anúncios
+    for (const { url, link } of alvos) {
+        const pagina = paginas.get(link);
+        const texto = pagina ? descriptionFromJsonLd(pagina.json_ld) : null;
+        if (texto) {
+            descricoes.set(url, texto);
+        } else {
+            const titulo = pagina?.titulo_pagina || 'sem resposta';
+            falhas.set(titulo, (falhas.get(titulo) || 0) + 1);
         }
-        if (falhas.size > 0) {
-            console.warn(`  Sem descrição, por título da página: ${[...falhas].map(([t, n]) => `"${t}" x${n}`).join(', ')}`);
-        }
-    } catch (err) {
-        console.error(`  ⚠ Falha ao ler as descrições pelo navegador: ${err.message}`);
-    } finally {
-        fs.rmSync(entrada, { force: true });
-        fs.rmSync(entrada.replace(/\.json$/, '-resultado.json'), { force: true });
+    }
+    if (falhas.size > 0) {
+        console.warn(`  Sem descrição, por título da página: ${[...falhas].map(([t, n]) => `"${t}" x${n}`).join(', ')}`);
     }
     return descricoes;
 }
@@ -1214,7 +1186,7 @@ async function cacheVeredito(coluna, urls) {
 }
 
 // leitura: { linksOlx, headless } repassado a fetchDescriptionsViaBrowser.
-async function verifyHighProfitDescriptions(category, leitura = {}) {
+async function verifyFeedDescriptions(category, leitura = {}) {
     // Anúncio já marcado com defeito pelo título (iPhone) fica de fora: já aparece
     // com aviso no card e não precisa gastar leitura nem Haiku.
     const { data: pendentes, error } = await supabase
@@ -1223,14 +1195,14 @@ async function verifyHighProfitDescriptions(category, leitura = {}) {
         .eq('category', category)
         .eq('defeito', false)
         .is('verified_at', null)
-        .gte('profit_pct', LUCRO_MIN_VERIFICACAO)
-        .order('profit_pct', { ascending: false })
+        .neq('opportunity_level', 'nenhuma')
+        .order('profit_pct', { ascending: false, nullsFirst: false })
         .limit(DESCRIPTION_MAX_PER_CYCLE);
 
     if (error) throw new Error(`Erro ao buscar anúncios pendentes de verificação: ${error.message}`);
     if (pendentes.length === 0) return;
 
-    console.log(`  Verificando a descrição de ${pendentes.length} anúncio(s) com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
+    console.log(`  Verificando a descrição de ${pendentes.length} anúncio(s) do feed (maior lucro primeiro)...`);
 
     const descricoes = await fetchDescriptionsViaBrowser(pendentes, leitura);
     const comDescricao = pendentes
@@ -1417,8 +1389,8 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
         await processValidItems(validItems, category, mediaMap);
 
         if (VERIFY_DESCRIPTIONS) {
-            console.log(`5b. Verificando descrição dos anúncios com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
-            await verifyHighProfitDescriptions(category, leituraDescricao);
+            console.log('5b. Verificando descrição dos anúncios do feed...');
+            await verifyFeedDescriptions(category, leituraDescricao);
         }
     }
 
@@ -1521,7 +1493,7 @@ async function run() {
         const { prontas, puladas } = tracker.resolve({ parcial });
         for (const { category, urls } of prontas) {
             console.log(`   Categoria ${category}: ${urls.length} anúncios vistos no ciclo.`);
-            await handleStrikes(category, urls);
+            await handleStrikes(category, urls, { headless });
         }
         for (const { category, motivo } of puladas) {
             console.warn(`   ⚠ Strikes PULADOS (${category}): ${motivo}.`);
@@ -1545,4 +1517,4 @@ if (require.main === module) {
         });
 }
 
-module.exports = { classifyBatch, fetchAllActiveRows, extractAdId, fetchDescriptionsViaBrowser };
+module.exports = { classifyBatch, fetchAllActiveRows, extractAdId, fetchDescriptionsViaBrowser, probeManyViaBrowser };

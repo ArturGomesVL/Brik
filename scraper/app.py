@@ -468,13 +468,14 @@ def main():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DESCRIÇÕES (--descricoes)
+# PÁGINAS DE ANÚNCIO (--anuncios)
 # ──────────────────────────────────────────────────────────────────────────────
-# O worker verifica a descrição dos anúncios de lucro alto. O curl dele toma 403
-# do Cloudflare em praticamente toda requisição (no Actions, todas); o Chrome da
-# raspagem passa. A descrição fica no JSON-LD (schema.org/Product) da página do
-# anúncio; aqui só devolvemos os blocos JSON-LD crus e o worker extrai o texto.
-TENTATIVAS_DESCRICAO = 2
+# O worker abre páginas de anúncio pra ler a descrição (verificação de defeito) e
+# pra confirmar se o anúncio saiu do ar antes de apagar por strike. O curl dele toma
+# 403 do Cloudflare nessas páginas (no Actions, sempre); o Chrome da raspagem passa.
+# Aqui só devolvemos os blocos JSON-LD crus (schema.org/Product, onde fica a
+# descrição) e o título da página; quem interpreta é o worker.
+TENTATIVAS_ANUNCIO = 2
 
 
 def _pagina_anuncio_pronta(driver) -> bool:
@@ -490,7 +491,7 @@ def ler_json_ld(driver, link: str) -> tuple[list[str], str]:
     """Abre o anúncio e devolve (blocos JSON-LD, título da página). Sem JSON-LD
     (bloqueio, anúncio fora do ar, timeout) devolve lista vazia."""
     titulo = ''
-    for tentativa in range(1, TENTATIVAS_DESCRICAO + 1):
+    for tentativa in range(1, TENTATIVAS_ANUNCIO + 1):
         if tentativa > 1:
             sleep(random.uniform(4, 8))
         try:
@@ -517,7 +518,7 @@ def ler_json_ld(driver, link: str) -> tuple[list[str], str]:
     return [], titulo
 
 
-def ler_descricoes(caminho_entrada: str):
+def ler_anuncios(caminho_entrada: str):
     """Lê a lista de links (JSON) em caminho_entrada e grava, ao lado dela, um
     <entrada>-resultado.json com {link, titulo_pagina, json_ld} por anúncio."""
     links = json.loads(Path(caminho_entrada).read_text(encoding='utf-8'))
@@ -526,7 +527,7 @@ def ler_descricoes(caminho_entrada: str):
     try:
         for i, link in enumerate(links, start=1):
             blocos, titulo = ler_json_ld(driver, link)
-            logger.info(f'[descrição {i}/{len(links)}] {"OK" if blocos else "sem JSON-LD"} '
+            logger.info(f'[anúncio {i}/{len(links)}] {"OK" if blocos else "sem JSON-LD"} '
                         f'(título da página: "{titulo}") {link}')
             resultados.append({'link': link, 'titulo_pagina': titulo, 'json_ld': blocos})
             if i < len(links):
@@ -552,7 +553,7 @@ def ler_argumentos() -> argparse.Namespace:
     p.add_argument('--primeiras', action='store_true',
                    help='raspa as --paginas PRIMEIRAS páginas (mais recentes) em vez das últimas')
     p.add_argument('--headless', action='store_true', help='roda sem abrir janela')
-    p.add_argument('--descricoes', metavar='ARQUIVO',
+    p.add_argument('--anuncios', metavar='ARQUIVO',
                    help='em vez de raspar a busca, lê o JSON-LD dos anúncios listados no ARQUIVO '
                         '(JSON com a lista de links) e grava <ARQUIVO>-resultado.json')
     return p.parse_args()
@@ -574,7 +575,7 @@ if __name__ == '__main__':
         PRIMEIRAS = True
     if _args.headless:
         HEADLESS = True
-    if _args.descricoes:
-        ler_descricoes(_args.descricoes)
+    if _args.anuncios:
+        ler_anuncios(_args.anuncios)
     else:
         main()
