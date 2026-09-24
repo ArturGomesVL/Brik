@@ -33,9 +33,14 @@ jobs:
         working-directory: worker
         run: npm install
 
+      - name: Instalar tela virtual (Xvfb)
+        run: command -v xvfb-run || (sudo apt-get update -q && sudo apt-get install -y -q xvfb)
+
+      # Sem --headless: o OLX bloqueia o Chrome headless. O Xvfb dá uma tela
+      # virtual para o Chrome rodar com janela, como na máquina local.
       - name: Rodar worker
         working-directory: worker
-        run: node worker.js --headless
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node worker.js
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
