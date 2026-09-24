@@ -6,12 +6,16 @@ on:
     - cron: '0 0,10,12,14,16,18,20,22 * * *'
   workflow_dispatch:
     inputs:
+      ciclo_completo:
+        description: 'Ciclo completo: todos os produtos e páginas, com strikes (ignora os dois campos abaixo)'
+        type: boolean
+        default: false
       buscas:
-        description: 'Produtos, separados por espaço (iphone ps5 ps4 ps3 ps2 xbox). Vazio = todos'
+        description: 'Produtos, separados por espaço (iphone ps5 ps4 ps3 ps2 xbox)'
         type: string
         default: 'xbox'
       paginas:
-        description: 'Máximo de páginas por produto (vazio = padrão de cada produto, com strikes)'
+        description: 'Máximo de páginas por produto (raspagem parcial, sem strikes)'
         type: string
         default: '1'
       dry_run:
@@ -55,12 +59,16 @@ jobs:
         working-directory: worker
         # No agendamento os inputs vêm vazios: roda a lista completa.
         run: |
-          read -ra args <<< "$BUSCAS"
-          if [ -n "$PAGINAS" ]; then args+=(--paginas "$PAGINAS"); fi
+          args=()
+          if [ "$CICLO_COMPLETO" != "true" ]; then
+            read -ra args <<< "$BUSCAS"
+            if [ -n "$PAGINAS" ]; then args+=(--paginas "$PAGINAS"); fi
+          fi
           if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
           echo "node worker.js ${args[*]}"
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node worker.js "${args[@]}"
         env:
+          CICLO_COMPLETO: ${{ inputs.ciclo_completo }}
           BUSCAS: ${{ inputs.buscas }}
           PAGINAS: ${{ inputs.paginas }}
           DRY_RUN: ${{ inputs.dry_run }}
