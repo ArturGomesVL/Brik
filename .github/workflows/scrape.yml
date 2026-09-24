@@ -5,6 +5,19 @@ on:
     # 07h–21h em Recife (UTC-3), de 2 em 2 horas = 10h–00h UTC
     - cron: '0 0,10,12,14,16,18,20,22 * * *'
   workflow_dispatch:
+    inputs:
+      buscas:
+        description: 'Produtos, separados por espaço (iphone ps5 ps4 ps3 ps2 xbox). Vazio = todos'
+        type: string
+        default: 'xbox'
+      paginas:
+        description: 'Máximo de páginas por produto (vazio = padrão de cada produto, com strikes)'
+        type: string
+        default: '1'
+      dry_run:
+        description: 'Dry-run: só raspa, sem Haiku e sem gravar no banco'
+        type: boolean
+        default: false
 
 # Duas execuções simultâneas poderiam aplicar strikes em dobro.
 concurrency:
@@ -40,8 +53,17 @@ jobs:
       # virtual para o Chrome rodar com janela, como na máquina local.
       - name: Rodar worker
         working-directory: worker
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node worker.js
+        # No agendamento os inputs vêm vazios: roda a lista completa.
+        run: |
+          read -ra args <<< "$BUSCAS"
+          if [ -n "$PAGINAS" ]; then args+=(--paginas "$PAGINAS"); fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          echo "node worker.js ${args[*]}"
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node worker.js "${args[@]}"
         env:
+          BUSCAS: ${{ inputs.buscas }}
+          PAGINAS: ${{ inputs.paginas }}
+          DRY_RUN: ${{ inputs.dry_run }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
