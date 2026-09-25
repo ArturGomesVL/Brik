@@ -13,6 +13,7 @@ import {
   ShieldUserIcon,
   TrashIcon,
 } from '../components/icons.jsx'
+import { mascaraTelefone } from '../lib/format.js'
 
 // "Editar perfil", aberto pelo botão do Meu Perfil. Ainda não existe login,
 // então os campos começam vazios e salvar só volta para o perfil. Tela cheia,
@@ -25,15 +26,6 @@ const VAZIO = {
   nascimento: '',
   localizacao: '',
   usuario: '',
-}
-
-// (12) 34567-8910 enquanto o usuário digita.
-function mascaraTelefone(valor) {
-  const d = valor.replace(/\D/g, '').slice(0, 11)
-  if (d.length <= 2) return d.length ? `(${d}` : ''
-  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`
-  const meio = d.length === 11 ? 7 : 6
-  return `(${d.slice(0, 2)}) ${d.slice(2, meio)}-${d.slice(meio)}`
 }
 
 // 21/08/2007 enquanto o usuário digita.

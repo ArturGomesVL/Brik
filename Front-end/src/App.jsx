@@ -10,6 +10,10 @@ import Salvos from './pages/Salvos.jsx'
 import Perfil from './pages/Perfil.jsx'
 import EditarPerfil from './pages/EditarPerfil.jsx'
 import AdicionarProduto from './pages/AdicionarProduto.jsx'
+import Login from './pages/Login.jsx'
+import Cadastro from './pages/Cadastro.jsx'
+import Quiz from './pages/Quiz.jsx'
+import EmBreve from './pages/EmBreve.jsx'
 
 const router = createBrowserRouter([
   {
@@ -33,6 +37,12 @@ const router = createBrowserRouter([
   { path: '/adicionar/novo', element: <AdicionarProduto /> },
   // Edição do perfil: tela cheia, sem navbar. Sai pela seta do header.
   { path: '/perfil/editar', element: <EditarPerfil /> },
+  // Autenticação: tela cheia, sem navbar. A recuperação de senha ainda não existe.
+  { path: '/login', element: <Login /> },
+  { path: '/cadastro', element: <Cadastro /> },
+  // Quiz de boas-vindas, logo depois do cadastro.
+  { path: '/quiz', element: <Quiz /> },
+  { path: '/recuperar-senha', element: <EmBreve title="Recuperar senha" /> },
 ])
 
 function App() {

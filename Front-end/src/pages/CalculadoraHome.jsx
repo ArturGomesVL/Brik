@@ -32,7 +32,7 @@ function CalculadoraHome() {
 
           <span
             aria-hidden="true"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-white"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-paper text-brik"
           >
             <ChevronRightIcon className="h-4 w-4" />
           </span>

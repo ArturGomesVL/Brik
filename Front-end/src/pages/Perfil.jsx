@@ -34,9 +34,8 @@ function Item({ label, Icon, perigo }) {
       >
         <span
           aria-hidden="true"
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white ${
-            perigo ? 'bg-loss' : 'bg-brik'
-          }`}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white ${perigo ? 'bg-loss' : 'bg-brik'
+            }`}
         >
           <Icon className="h-5 w-5" />
         </span>
@@ -84,8 +83,8 @@ function Perfil() {
           type="button"
           className="mt-6 flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-brik-dark to-brik p-4 text-left text-white"
         >
-          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent">
-            <TrophyIcon className="h-6 w-6 text-white" />
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paper">
+            <TrophyIcon className="h-6 w-6 text-brik" />
           </span>
 
           <span className="min-w-0 flex-1">

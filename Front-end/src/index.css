@@ -12,8 +12,8 @@
        Grafite        #2B2B2B  títulos e ícones      -> ink / strong
        Cinza claro    #D9D9D6  bordas e divisórias   -> line
      Botões principais são azul petróleo com texto marfim. O azul royal é só detalhe
-     (ícones, selos, seleção). Sobre o petróleo ele some — ali ele vira fundo
-     de um círculo com ícone branco. Texto sobre fundo azul royal é sempre branco. */
+     (ícones, selos, seleção). Sobre o petróleo ele some — ali o destaque é um
+     círculo marfim com ícone petróleo. Texto sobre fundo azul royal é sempre branco. */
   --color-paper: #f8f7f4; /* Marfim: fundo principal */
   --color-brik: #0f4c5c; /* Azul petróleo: cor da marca */
   --color-brik-dark: #0a3540; /* azul petróleo mais escuro: hover e gradientes */
@@ -22,6 +22,10 @@
   --color-line: #d9d9d6; /* Cinza claro: bordas e divisórias */
   --color-gain: #2f6b4a; /* verde de lucro */
   --color-gain-bg: #ddefe8; /* Verde suave: cards de lucro */
+  /* Verde-água: o brilho claro do fundo do login. Links e foco sobre fundo
+     escuro, onde o petróleo e o azul royal somem. */
+  --color-mint: #a8dccf;
+  --color-loss-soft: #f5b3a3; /* prejuízo clareado: erro sobre fundo escuro */
 
   /* Selos de oportunidade: o azul fica mais intenso conforme o negócio melhora. */
   --color-level-boa: #dce7fc; /* Bom: azul claro, com texto level-boa-ink */
@@ -163,6 +167,50 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .glass-lens { transition: none; }
+}
+
+/* Login ------------------------------------------------------------------
+   Fundo: manchas desfocadas de verde e petróleo — escuro embaixo à esquerda,
+   um brilho verde-água no alto à direita. Tudo gradiente, sem imagem. */
+.login-bg {
+  background:
+    radial-gradient(55% 40% at 88% 8%, rgba(168, 220, 207, 0.85), transparent 70%),
+    radial-gradient(60% 45% at 72% 52%, rgba(74, 138, 124, 0.55), transparent 72%),
+    radial-gradient(55% 45% at 0% 12%, rgba(28, 44, 40, 0.9), transparent 70%),
+    radial-gradient(75% 55% at 8% 95%, rgba(5, 34, 24, 0.95), transparent 72%),
+    linear-gradient(165deg, #22493f, var(--color-brik) 55%, var(--color-brik-dark));
+}
+
+/* O contorno de foco padrão é petróleo e sumiria neste fundo. */
+.login-bg :focus-visible {
+  outline-color: var(--color-mint);
+}
+
+/* Card de vidro, no mesmo espírito da navbar: quase sem cor própria — o que se
+   vê é o fundo atrás, desfocado e clareado —, com aro de luz na borda e um
+   reflexo diagonal no canto de cima (o ::before). */
+.glass-card {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05) 45%, rgba(255, 255, 255, 0.1));
+  -webkit-backdrop-filter: blur(28px) saturate(170%) brightness(1.05);
+  backdrop-filter: blur(28px) saturate(170%) brightness(1.05);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 1.5px 1.5px 1px -0.5px rgba(255, 255, 255, 0.55),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.2),
+    inset 0 0 24px rgba(255, 255, 255, 0.06),
+    0 24px 48px -18px rgba(0, 0, 0, 0.55);
+}
+
+.glass-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.22), transparent 38%);
 }
 
 /* Transição de tela: só a logo viaja (da lateral, na Home, para o centro do header

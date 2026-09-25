@@ -26,7 +26,7 @@ const VAZIO = {
 }
 
 const CAMPO =
-  'w-full rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none placeholder:text-ink/40 focus:border-brik'
+  'w-full rounded-lg border border-line bg-white px-4 py-3.5 text-[15px] text-ink outline-none placeholder:text-ink/40 focus:border-brik'
 
 function Campo({ label, value, onChange, ...props }) {
   return (
@@ -66,28 +66,37 @@ function Selecao({ label, value, onChange, options }) {
   )
 }
 
+// O quadrado de adicionar fica sozinho, grande e centralizado. As fotos
+// escolhidas aparecem embaixo, três por linha, também em 1:1 e recortadas no
+// centro para caber.
+// Um terço da linha, descontados os dois espaços de 0,5rem.
+const QUADRADO = 'w-[calc((100%-1rem)/3)]'
+
 function Fotos({ fotos, onAdd }) {
   return (
-    <div className="rounded-xl border border-dashed border-line p-5">
-      <label className="flex cursor-pointer flex-col items-center gap-2">
-        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-raise text-ink/50">
-          <CameraIcon className="h-6 w-6" />
+    <div className="flex flex-col items-center gap-3">
+      <label className="flex aspect-square w-3/5 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-dashed border-ink/25 bg-white text-center transition-colors hover:border-brik focus-within:border-brik">
+        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-raise text-ink/50">
+          <CameraIcon className="h-7 w-7" />
         </span>
-        <span className="text-xs font-bold text-ink">Adicionar fotos</span>
+        <span className="text-sm font-bold text-ink">Adicionar fotos</span>
         <input
           type="file"
           accept="image/*"
           multiple
           className="sr-only"
-          onChange={(event) => onAdd([...event.target.files])}
+          onChange={(event) => {
+            onAdd([...event.target.files])
+            event.target.value = ''
+          }}
         />
       </label>
 
       {fotos.length > 0 && (
-        <ul className="mt-4 flex flex-wrap justify-center gap-2">
+        <ul className="flex w-full flex-wrap justify-center gap-2">
           {fotos.map(({ url, nome }) => (
-            <li key={url}>
-              <img src={url} alt={nome} className="h-16 w-16 rounded-lg object-cover" />
+            <li key={url} className={QUADRADO}>
+              <img src={url} alt={nome} className="aspect-square w-full rounded-lg object-cover" />
             </li>
           ))}
         </ul>
@@ -145,7 +154,7 @@ function AdicionarProduto() {
         </h1>
       </div>
 
-      <form onSubmit={enviar} className="mt-5 flex flex-col gap-3 px-4">
+      <form onSubmit={enviar} className="mx-auto mt-5 flex w-full max-w-[20rem] flex-col gap-3 px-4 sm:px-0">
         <Fotos fotos={fotos} onAdd={adicionarFotos} />
 
         <Campo label="Título:" required {...campo('titulo')} />
