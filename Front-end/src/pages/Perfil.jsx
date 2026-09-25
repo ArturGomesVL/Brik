@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
 import {
   AvatarIcon,
@@ -11,10 +11,10 @@ import {
   SupportIcon,
   TrophyIcon,
 } from '../components/icons.jsx'
+import { supabase } from '../lib/supabase.js'
 
-// "Meu Perfil": conta e ajustes. Ainda não existe login, então o nome é um
-// genérico e os itens da lista não levam a lugar nenhum — cada um espera a sua
-// própria tela.
+// "Meu Perfil": conta e ajustes. O nome ainda é um genérico e, fora o "Sair",
+// os itens da lista não levam a lugar nenhum — cada um espera a sua própria tela.
 
 const ITENS = [
   { key: 'privacidade', label: 'Privacidade', Icon: LockIcon },
@@ -25,11 +25,12 @@ const ITENS = [
   { key: 'sair', label: 'Sair', Icon: LogoutIcon, perigo: true },
 ]
 
-function Item({ label, Icon, perigo }) {
+function Item({ label, Icon, perigo, onClick }) {
   return (
     <li>
       <button
         type="button"
+        onClick={onClick}
         className="flex w-full items-center gap-3 rounded-xl bg-surface-card px-3 py-3 text-left ring-1 ring-line transition-colors hover:bg-surface-raise"
       >
         <span
@@ -54,6 +55,13 @@ function Item({ label, Icon, perigo }) {
 }
 
 function Perfil() {
+  const navigate = useNavigate()
+
+  async function sair() {
+    await supabase.auth.signOut()
+    navigate('/login', { viewTransition: true })
+  }
+
   return (
     <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl">
       <BrandHeader />
@@ -101,7 +109,7 @@ function Perfil() {
 
         <ul className="mt-5 flex flex-col gap-2.5">
           {ITENS.map((item) => (
-            <Item key={item.key} {...item} />
+            <Item key={item.key} {...item} onClick={item.key === 'sair' ? sair : undefined} />
           ))}
         </ul>
       </main>

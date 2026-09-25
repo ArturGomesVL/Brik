@@ -1,21 +1,72 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { AuthLayout, BotaoPrincipal, Campo, CampoSenha, RedesSociais, linkAuth } from '../components/auth.jsx'
-import { ArrowRightIcon, PersonIcon } from '../components/icons.jsx'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import {
+  AuthLayout,
+  BotaoPrincipal,
+  Campo,
+  CampoSenha,
+  CodigoEmail,
+  ErroForm,
+  RedesSociais,
+  linkAuth,
+} from '../components/auth.jsx'
+import { ArrowRightIcon, MailIcon } from '../components/icons.jsx'
+import { lembrarSessao, supabase } from '../lib/supabase.js'
+import { mensagemErro } from '../stores/useAuthStore.js'
 
 // Tela de login. Fundo, card de vidro e campos vêm de components/auth.jsx,
 // compartilhados com o cadastro.
 
 function Login() {
   const navigate = useNavigate()
-  const [login, setLogin] = useState('')
+  const location = useLocation()
+  const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [lembrar, setLembrar] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [erro, setErro] = useState('')
+  // Conta criada mas e-mail nunca confirmado: pede o código antes de entrar.
+  const [confirmarEmail, setConfirmarEmail] = useState('')
+  // Volta para onde a pessoa tentou ir antes de cair no login. Se ainda não
+  // respondeu o quiz, a RotaProtegida desvia para ele.
+  const destino = location.state?.de ?? '/'
 
-  function entrar(event) {
+  async function entrar(event) {
     event.preventDefault()
-    // TODO: autenticar no Supabase (login, senha, lembrar).
-    navigate('/', { viewTransition: true })
+    setEnviando(true)
+    setErro('')
+
+    // Antes do login: é na hora de gravar a sessão que o cliente decide onde.
+    lembrarSessao(lembrar)
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
+
+    if (error?.code === 'email_not_confirmed') {
+      // Manda um código novo; se o Supabase recusar por ser cedo demais, o
+      // anterior ainda vale.
+      await supabase.auth.resend({ type: 'signup', email: email.trim() })
+      setEnviando(false)
+      setConfirmarEmail(email.trim())
+      return
+    }
+
+    setEnviando(false)
+    if (error) {
+      setErro(mensagemErro(error))
+      return
+    }
+    entrou()
+  }
+
+  function entrou() {
+    navigate(destino, { replace: true, viewTransition: true })
+  }
+
+  if (confirmarEmail) {
+    return (
+      <AuthLayout>
+        <CodigoEmail email={confirmarEmail} onConfirmado={entrou} onVoltar={() => setConfirmarEmail('')} />
+      </AuthLayout>
+    )
   }
 
   return (
@@ -27,11 +78,12 @@ function Login() {
 
       <form onSubmit={entrar} className="mt-5 flex flex-col gap-3">
         <Campo
-          label="Login"
-          Icon={PersonIcon}
-          autoComplete="username"
-          value={login}
-          onChange={(event) => setLogin(event.target.value)}
+          label="E-mail"
+          Icon={MailIcon}
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
         />
 
         <CampoSenha
@@ -68,13 +120,15 @@ function Login() {
           </Link>
         </div>
 
-        <BotaoPrincipal>
-          Entrar
+        <ErroForm>{erro}</ErroForm>
+
+        <BotaoPrincipal disabled={enviando}>
+          {enviando ? 'Entrando…' : 'Entrar'}
           <ArrowRightIcon aria-hidden="true" className="h-4 w-4" />
         </BotaoPrincipal>
       </form>
 
-      <RedesSociais />
+      <RedesSociais lembrar={lembrar} destino={destino} />
 
       <p className="mt-6 text-center text-[11px] text-paper/80">
         Não tem uma conta?{' '}

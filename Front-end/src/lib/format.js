@@ -21,6 +21,9 @@ export function mascaraTelefone(valor) {
   return `(${d.slice(0, 2)}) ${d.slice(2, meio)}-${d.slice(meio)}`
 }
 
+// "1.234,56" (saída de mascaraReais) -> 1234.56
+export const reaisParaNumero = (texto) => Number(texto.replace(/\D/g, '')) / 100
+
 // 1.234,56 enquanto o usuário digita: os dígitos entram pelos centavos.
 const reais = number({ minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export function mascaraReais(valor) {

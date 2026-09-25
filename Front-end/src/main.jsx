@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+// Começa a acompanhar a sessão do Supabase Auth já na abertura.
+import './stores/useAuthStore.js'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

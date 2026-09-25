@@ -9,11 +9,15 @@ import {
   RouteIcon,
   WinkIcon,
 } from '../components/icons.jsx'
-import { mascaraReais } from '../lib/format.js'
+import { mascaraReais, reaisParaNumero } from '../lib/format.js'
+import { supabase } from '../lib/supabase.js'
+import { useAuthStore } from '../stores/useAuthStore.js'
 
 // Quiz de boas-vindas, aberto depois do cadastro: orçamento, cidade e distância,
 // categoria — e uma tela de agradecimento. Uma rota só; o passo troca aqui dentro.
 // Tela cheia, sem navbar. A cor de destaque é o petróleo da marca.
+// As respostas vão para public.preferencias ao concluir o passo 3; até lá, a
+// RotaProtegida traz de volta para cá quem tentar abrir o app.
 
 const TOTAL = 3
 
@@ -148,6 +152,11 @@ function Quiz() {
   const navigate = useNavigate()
   const [passo, setPasso] = useState(0)
   const [form, setForm] = useState(VAZIO)
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState('')
+  const userId = useAuthStore((state) => state.session?.user.id)
+  // Primeira vez: não tem para onde voltar, o app só abre depois do quiz.
+  const obrigatorio = useAuthStore((state) => state.quizRespondido === false)
 
   const set = (key, valor) => setForm((atual) => ({ ...atual, [key]: valor }))
 
@@ -158,15 +167,37 @@ function Quiz() {
     true,
   ][passo]
 
-  function avancar(event) {
+  async function avancar(event) {
     event.preventDefault()
-    if (!valido) return
+    if (!valido || salvando) return
+    if (passo === TOTAL - 1 && !(await salvar())) return
     if (passo < TOTAL) {
       setPasso(passo + 1)
       return
     }
-    // TODO: gravar as respostas no perfil do usuário (Supabase).
     navigate('/', { viewTransition: true })
+  }
+
+  // Upsert: refazer o quiz depois atualiza as mesmas preferências.
+  async function salvar() {
+    setSalvando(true)
+    setErro('')
+    const { error } = await supabase.from('preferencias').upsert({
+      user_id: userId,
+      orcamento: reaisParaNumero(form.orcamento),
+      cidade: form.cidade,
+      distancia_km: Number(form.distancia),
+      categoria: form.categoria || null,
+    })
+    setSalvando(false)
+
+    if (error) {
+      console.error('Erro ao salvar o quiz:', error.message)
+      setErro('Não foi possível salvar suas respostas. Tente de novo.')
+      return false
+    }
+    useAuthStore.setState({ quizRespondido: true })
+    return true
   }
 
   // No primeiro passo a seta sai do quiz. Sem histórico no app (link aberto
@@ -180,14 +211,16 @@ function Quiz() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-paper px-7 pb-12 pt-10 shadow-xl">
       <div className="relative flex items-center justify-center">
-        <button
-          type="button"
-          onClick={voltar}
-          aria-label="Voltar"
-          className="absolute -left-2 flex h-10 w-10 items-center justify-center rounded-xl text-brik transition-colors hover:bg-brik/10"
-        >
-          <ChevronRightIcon className="h-6 w-6 rotate-180" />
-        </button>
+        {!(obrigatorio && passo === 0) && (
+          <button
+            type="button"
+            onClick={voltar}
+            aria-label="Voltar"
+            className="absolute -left-2 flex h-10 w-10 items-center justify-center rounded-xl text-brik transition-colors hover:bg-brik/10"
+          >
+            <ChevronRightIcon className="h-6 w-6 rotate-180" />
+          </button>
+        )}
         {/* Na tela final o último ponto continua aceso: o quiz terminou nele. */}
         <Progresso atual={Math.min(passo, TOTAL - 1)} />
       </div>
@@ -320,7 +353,12 @@ function Quiz() {
         )}
 
         <div className="mt-auto pt-10">
-          <Continuar disabled={!valido} />
+          {erro && (
+            <p role="alert" className="mb-3 text-center text-xs text-loss">
+              {erro}
+            </p>
+          )}
+          <Continuar disabled={!valido || salvando} />
         </div>
       </form>
     </div>
