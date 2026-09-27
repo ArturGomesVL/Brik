@@ -7,10 +7,10 @@ import { StarIcon } from '../components/icons.jsx'
 // mesmo formato do feed (ProductCard).
 function Salvos() {
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl lg:max-w-2xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
 
-      <main className="px-4 pt-6">
+      <main className="px-4 pt-6 lg:pt-12">
         <h1 className="text-[28px] font-bold leading-none tracking-tight text-ink">Salvos</h1>
 
         <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">

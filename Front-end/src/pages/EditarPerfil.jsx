@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
 import {
+  ArrowLeftIcon,
   AvatarIcon,
   CalendarIcon,
   CallIcon,
@@ -17,7 +18,8 @@ import { mascaraTelefone } from '../lib/format.js'
 
 // "Editar perfil", aberto pelo botão do Meu Perfil. Ainda não existe login,
 // então os campos começam vazios e salvar só volta para o perfil. Tela cheia,
-// sem navbar (a rota fica fora do Layout).
+// sem navbar (a rota fica fora do Layout). No desktop a foto fica numa coluna à
+// esquerda e os dados à direita.
 
 const VAZIO = {
   nome: '',
@@ -85,13 +87,29 @@ function EditarPerfil() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-10 shadow-xl">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-10 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
       <BrandHeader voltarPara="/perfil" />
 
-      <h1 className="sr-only">Editar perfil</h1>
+      {/* No celular a seta e a logo estão no header verde, e o título é só para
+          leitores de tela. No desktop o header some (a logo está na TopBar) e a
+          seta com o título aparecem aqui. */}
+      <div className="flex items-center gap-2 lg:px-8 lg:pb-8 lg:pt-10">
+        <Link
+          to="/perfil"
+          viewTransition
+          aria-label="Voltar"
+          className="-ml-1 hidden h-9 w-9 items-center justify-center rounded-xl text-ink transition-colors hover:bg-surface-raise lg:flex"
+        >
+          <ArrowLeftIcon className="h-5 w-5" />
+        </Link>
+        <h1 className="sr-only text-[28px] font-bold tracking-tight text-ink lg:not-sr-only">Editar perfil</h1>
+      </div>
 
-      <form onSubmit={salvar} className="flex flex-col gap-4 px-4">
-        <section className="relative -mt-3 rounded-2xl bg-white px-4 pb-4 pt-3 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.35)]">
+      <form
+        onSubmit={salvar}
+        className="flex flex-col gap-4 px-4 lg:grid lg:grid-cols-[18rem_1fr] lg:items-start lg:gap-6 lg:px-8"
+      >
+        <section className="relative -mt-3 rounded-2xl bg-white px-4 pb-4 pt-3 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.35)] lg:mt-0">
           <h2 className="text-xs font-bold text-ink/50">Foto de Perfil</h2>
 
           <div className="mt-2 flex items-center gap-4">
@@ -180,7 +198,10 @@ function EditarPerfil() {
           />
         </section>
 
-        <button type="submit" className="rounded-lg bg-brik py-3.5 text-center font-bold text-paper transition-colors hover:bg-brik-dark">
+        <button
+          type="submit"
+          className="rounded-lg bg-brik py-3.5 text-center font-bold text-paper transition-colors hover:bg-brik-dark lg:col-start-2 lg:justify-self-end lg:px-12"
+        >
           Salvar alterações
         </button>
       </form>

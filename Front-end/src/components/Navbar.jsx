@@ -79,6 +79,10 @@ function Navbar() {
 
     if (!lens) return
     measure()
+    // No desktop a barra fica escondida (lg:hidden) e as abas medem 0px: não há o
+    // que animar, e a conta da duração dividiria por zero. Quando ela voltar a
+    // aparecer, o ResizeObserver abaixo recoloca a bolha na aba certa.
+    if (!slots.current.width) return
     if (activeIndex === -1) return
 
     const toX = slots.current.x[activeIndex]
@@ -266,7 +270,7 @@ function Navbar() {
   return (
     <nav
       aria-label="Navegação principal"
-      className="navbar-enter fixed inset-x-0 bottom-4 z-50 mx-auto w-[calc(100%-2rem)] max-w-sm"
+      className="navbar-enter fixed inset-x-0 bottom-4 z-50 mx-auto w-[calc(100%-2rem)] max-w-sm lg:hidden"
       style={toCalculator && !chegando ? { viewTransitionName: 'navbar' } : undefined}
     >
       <div

@@ -1,5 +1,7 @@
+import { useContext } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeftIcon } from './icons.jsx'
+import { ComTopBar } from './layoutContext.js'
 
 // Cabeçalho com a logo. Na Home ele é verde e rola com a página, com a logo à esquerda
 // e a busca abaixo. No Dashboard ele é marfim, fica fixo no topo e leva só a logo
@@ -8,6 +10,11 @@ import { ArrowLeftIcon } from './icons.jsx'
 // branca à esquerda que leva para essa rota, e a logo vai para o centro na mesma
 // altura: ao navegar ela só desliza para o lado, sem subir.
 function BrandHeader({ dashboard = false, voltarPara, className = '', children, ...props }) {
+  // No desktop, dentro do Layout, a logo já está na TopBar: some a linha da logo e,
+  // se o header não tem mais nada (a busca da Home), some o header inteiro.
+  const comTopBar = useContext(ComTopBar)
+  const soNoCelular = comTopBar ? 'lg:hidden' : ''
+
   // No dashboard o header tem só a altura da logo (mesmo tamanho da Home, h-9): ela
   // não encolhe nem sobe, apenas desliza da esquerda para o centro.
   const base = dashboard
@@ -15,9 +22,9 @@ function BrandHeader({ dashboard = false, voltarPara, className = '', children, 
     : 'rounded-b-[2rem] bg-brik px-5 pb-6 pt-6'
 
   return (
-    <header className={`${base} ${className}`} {...props}>
+    <header className={`${base} ${children ? '' : soNoCelular} ${className}`} {...props}>
       <div
-        className={`relative flex items-center ${dashboard || voltarPara ? 'justify-center' : ''} ${children ? 'mb-5' : ''}`}
+        className={`relative flex items-center ${dashboard || voltarPara ? 'justify-center' : ''} ${children ? 'mb-5' : ''} ${soNoCelular}`}
       >
         {voltarPara && (
           <Link

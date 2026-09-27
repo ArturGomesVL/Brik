@@ -127,10 +127,10 @@ function MeusProdutos() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-44 shadow-xl">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-44 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
 
-      <div className="flex items-center gap-2 px-4 pt-4">
+      <div className="flex items-center gap-2 px-4 pt-4 lg:px-8 lg:pt-12">
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -139,14 +139,22 @@ function MeusProdutos() {
         >
           <ArrowLeftIcon className="h-5 w-5" />
         </button>
-        <h1 className="text-xl font-bold tracking-tight text-ink">Meus Produtos</h1>
+        <h1 className="text-xl font-bold tracking-tight text-ink lg:text-[28px]">Meus Produtos</h1>
+        {/* No desktop o botão sai do rodapé fixo e fica aqui, ao lado do título. */}
+        <Link
+          to="/adicionar/novo"
+          viewTransition
+          className="ml-auto hidden rounded-xl bg-brik px-5 py-2.5 text-sm font-bold text-paper transition-colors hover:bg-brik-dark lg:block"
+        >
+          Adicionar novo produto
+        </Link>
       </div>
 
       {/* Abas roláveis: não cabem todas na largura do celular. */}
       <div
         role="tablist"
         aria-label="Situação dos produtos"
-        className="mt-4 flex gap-5 overflow-x-auto border-b border-line px-4"
+        className="mt-4 flex gap-5 overflow-x-auto border-b border-line px-4 lg:mx-8 lg:mt-6 lg:px-0"
       >
         {STATUS.map(({ key, label }) => {
           const ativa = key === aba
@@ -167,7 +175,7 @@ function MeusProdutos() {
         })}
       </div>
 
-      <main className="px-4 pt-4">
+      <main className="px-4 pt-4 lg:px-8 lg:pt-6">
         {visiveis.length === 0 ? (
           <div className="flex flex-col items-center gap-1 px-6 py-12 text-center">
             <p className="font-medium">
@@ -180,7 +188,7 @@ function MeusProdutos() {
             </p>
           </div>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-3 lg:grid lg:grid-cols-2">
             {visiveis.map((item) => (
               <Produto key={item.id} item={item} onStatus={mudarStatus} />
             ))}
@@ -188,8 +196,8 @@ function MeusProdutos() {
         )}
       </main>
 
-      {/* Fica acima da navbar e não rola com a lista. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-28 z-40 mx-auto w-full max-w-md px-4">
+      {/* Fica acima da navbar e não rola com a lista. Só no celular. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-28 z-40 mx-auto w-full max-w-md px-4 lg:hidden">
         <Link
           to="/adicionar/novo"
           viewTransition

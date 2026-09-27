@@ -10,6 +10,7 @@ import MelhoresRois from '../components/dashboard/MelhoresRois.jsx'
 import MetricasMes from '../components/dashboard/MetricasMes.jsx'
 import MeuEstoque from '../components/dashboard/MeuEstoque.jsx'
 import { HiddenProvider } from '../components/dashboard/hidden.js'
+import { usePreferenciasStore } from '../stores/usePreferenciasStore.js'
 import { ENTRANCE_MS, RevealContext, surfaceProps } from '../components/dashboard/reveal.js'
 
 // Ainda não há tabela de estoque/vendas do usuário no Supabase. Quando existir, é
@@ -38,7 +39,8 @@ const STEP = {
 
 function Dashboard() {
   const data = useDashboardData()
-  const [hidden, setHidden] = useState(false)
+  // Abre com os valores escondidos se o usuário pediu isso em Privacidade.
+  const [hidden, setHidden] = useState(() => usePreferenciasStore.getState().ocultarValores)
 
   // A entrada acontece só na montagem: depois dela a animação é desligada, para que
   // trocar de aba ou de período não faça o conteúdo novo aparecer com atraso.
@@ -52,43 +54,68 @@ function Dashboard() {
     <RevealContext.Provider value={entering}>
       <HiddenProvider value={hidden}>
         <div
-          {...surfaceProps(entering, 'mx-auto min-h-screen w-full max-w-md bg-surface pb-36 text-strong shadow-xl')}
+          {...surfaceProps(
+            entering,
+            'mx-auto min-h-screen w-full max-w-md bg-surface pb-36 text-strong shadow-xl lg:max-w-7xl lg:pb-12 lg:shadow-none',
+          )}
         >
           <BrandHeader dashboard />
 
-          <h1 className="sr-only">Dashboard</h1>
+          {/* No celular o título é só para leitores de tela (a logo ocupa o topo) e a
+              calculadora é o botão flutuante lá embaixo. No desktop o header da logo
+              some (ela está na TopBar), e os dois aparecem aqui, lado a lado. */}
+          <div className="flex items-center justify-between lg:px-8 lg:pt-10">
+            <h1 className="sr-only text-[28px] font-bold leading-none tracking-tight lg:not-sr-only">Dashboard</h1>
+            <Link
+              to="/calculadora"
+              viewTransition
+              className="hidden items-center gap-2 rounded-xl bg-strong px-4 py-2.5 text-sm font-medium text-surface transition-opacity hover:opacity-90 lg:flex"
+            >
+              <CalculatorIcon className="h-5 w-5" />
+              Calcular Brique
+            </Link>
+          </div>
 
-          <main className="flex flex-col gap-3 px-4 pt-4">
-            <LucroAcumulado
-              step={STEP.lucro}
-              data={data.lucro}
-              hidden={hidden}
-              onToggleHidden={() => setHidden((h) => !h)}
-            />
-
-            <div className="grid grid-cols-[1.25fr_1fr] gap-3">
-              <CapitalParado step={STEP.capitalParado} data={data.capitalParado} />
-              <GiroMedio step={STEP.giroMedio} data={data.giroMedio} />
+          {/* No desktop: lucro e gráfico à esquerda, os indicadores menores à direita,
+              e o estoque ocupando a largura toda embaixo. Os wrappers mantêm a mesma
+              ordem da coluna do celular. */}
+          <main className="flex flex-col gap-3 px-4 pt-4 lg:grid lg:grid-cols-12 lg:gap-5 lg:px-8 lg:pt-6">
+            <div className="lg:col-span-7">
+              <LucroAcumulado
+                step={STEP.lucro}
+                data={data.lucro}
+                hidden={hidden}
+                onToggleHidden={() => setHidden((h) => !h)}
+              />
             </div>
 
-            <InvestimentoRetorno step={STEP.investimentoRetorno} data={data.investimentoRetorno} />
+            <div className="flex flex-col gap-3 lg:col-span-5 lg:gap-5">
+              <div className="grid grid-cols-[1.25fr_1fr] gap-3 lg:gap-5">
+                <CapitalParado step={STEP.capitalParado} data={data.capitalParado} />
+                <GiroMedio step={STEP.giroMedio} data={data.giroMedio} />
+              </div>
 
-            <div className="mt-4">
+              <InvestimentoRetorno step={STEP.investimentoRetorno} data={data.investimentoRetorno} />
+            </div>
+
+            <div className="mt-4 lg:col-span-7 lg:mt-0">
               <MetricasMes step={STEP.mes} data={data.mes} />
             </div>
 
-            <MelhoresRois step={STEP.rois} data={data.roisPorModelo} />
+            <div className="lg:col-span-5">
+              <MelhoresRois step={STEP.rois} data={data.roisPorModelo} />
+            </div>
 
-            <div className="mt-4">
+            <div className="mt-4 lg:col-span-12">
               <MeuEstoque step={STEP.estoque} data={data.estoque} />
             </div>
           </main>
 
-          {/* Atalho flutuante da calculadora. Fica por cima do dashboard e não
-              rola com a página. O wrapper repete mx-auto + max-w-md da coluna
-              para o botão não descolar dela no desktop, e o top-52 o coloca no
-              alto à direita, logo abaixo do seletor de período. */}
-          <div className="pointer-events-none fixed inset-x-0 top-52 z-40 mx-auto flex w-full max-w-md justify-end px-4">
+          {/* Atalho flutuante da calculadora (só no celular). Fica por cima do
+              dashboard e não rola com a página. O wrapper repete mx-auto + max-w-md
+              da coluna para o botão não descolar dela, e o top-52 o coloca no alto à
+              direita, logo abaixo do seletor de período. */}
+          <div className="pointer-events-none fixed inset-x-0 top-52 z-40 mx-auto flex w-full max-w-md justify-end px-4 lg:hidden">
             <Link
               to="/calculadora"
               viewTransition

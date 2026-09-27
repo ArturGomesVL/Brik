@@ -208,8 +208,10 @@ function Quiz() {
     else navigate('/')
   }
 
+  // No desktop o quiz vira um cartão no meio da tela: esticado até o rodapé, o
+  // "Continuar" ficaria longe demais das perguntas.
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-paper px-7 pb-12 pt-10 shadow-xl">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-paper px-7 pb-12 pt-10 shadow-xl lg:my-12 lg:min-h-[44rem] lg:max-w-lg lg:rounded-3xl lg:border lg:border-line lg:px-12">
       <div className="relative flex items-center justify-center">
         {!(obrigatorio && passo === 0) && (
           <button

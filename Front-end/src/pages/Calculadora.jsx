@@ -130,8 +130,9 @@ function Calculadora() {
   }, [active, naming])
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-surface pb-6 text-strong shadow-xl">
-      <header className="sticky top-0 z-40 flex items-center gap-2 bg-surface px-4 py-3">
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-surface pb-6 text-strong shadow-xl lg:max-w-5xl lg:pb-12 lg:shadow-none">
+      {/* No desktop o header não gruda: quem fica no topo é a TopBar. */}
+      <header className="sticky top-0 z-40 flex items-center gap-2 bg-surface px-4 py-3 lg:static lg:px-8 lg:pb-2 lg:pt-10">
         <Link
           to="/calculadora"
           viewTransition
@@ -140,7 +141,7 @@ function Calculadora() {
         >
           <ArrowLeftIcon className="h-5 w-5" />
         </Link>
-        <h1 className="flex-1 text-xl font-bold tracking-tight">Calculadora</h1>
+        <h1 className="flex-1 text-xl font-bold tracking-tight lg:text-[28px]">Calculadora</h1>
         <button
           type="button"
           onClick={limpar}
@@ -150,98 +151,111 @@ function Calculadora() {
         </button>
       </header>
 
-      {/* Resultado */}
-      <div className="px-4">
-        <Card as="div" className="p-5" aria-live="polite">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className={`${LABEL} text-mute`}>Lucro líquido</p>
-              <p className={`mt-2 text-[40px] font-bold leading-none tracking-tight tabular-nums ${toneOf(r.lucro)}`}>
-                {formatBRL(r.lucro)}
-              </p>
+      {/* No desktop: resultado à esquerda, parado enquanto a página rola, e campos
+          com o teclado à direita. No celular tudo empilha como antes. */}
+      <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-8 lg:px-8 lg:pt-4">
+        {/* Resultado */}
+        <div className="px-4 lg:sticky lg:top-24 lg:px-0">
+          <Card as="div" className="p-5 lg:p-7" aria-live="polite">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className={`${LABEL} text-mute`}>Lucro líquido</p>
+                <p className={`mt-2 text-[40px] font-bold leading-none tracking-tight tabular-nums ${toneOf(r.lucro)}`}>
+                  {formatBRL(r.lucro)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className={`${LABEL} text-mute`}>Margem</p>
+                <p className={`mt-2 text-xl font-bold tabular-nums ${r.margem == null ? 'text-mute' : toneOf(r.margem)}`}>
+                  {r.margem == null ? '—' : `${r.margem > 0 ? '+' : ''}${formatDecimal(r.margem)}%`}
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className={`${LABEL} text-mute`}>Margem</p>
-              <p className={`mt-2 text-xl font-bold tabular-nums ${r.margem == null ? 'text-mute' : toneOf(r.margem)}`}>
-                {r.margem == null ? '—' : `${r.margem > 0 ? '+' : ''}${formatDecimal(r.margem)}%`}
-              </p>
+
+            <div className={`${LABEL} mt-5 flex items-center justify-between gap-3`}>
+              <span className="text-mute">Ponto de equilíbrio</span>
+              <Equilibrio lucro={r.lucro} margem={r.margem} />
             </div>
-          </div>
 
-          <div className={`${LABEL} mt-5 flex items-center justify-between gap-3`}>
-            <span className="text-mute">Ponto de equilíbrio</span>
-            <Equilibrio lucro={r.lucro} margem={r.margem} />
-          </div>
+            {/* Barra: o custo ocupa a parte cinza; o que sobra até a venda é a folga. */}
+            <div className="mt-2.5 flex h-1.5 overflow-hidden rounded-full bg-surface-raise" aria-hidden="true">
+              <div
+                className={`h-full transition-[width] duration-300 ${r.lucro < 0 ? 'bg-loss' : 'bg-mute/35'}`}
+                style={{ width: `${r.custoPct}%` }}
+              />
+              {r.lucro > 0 && <div className="h-full flex-1 bg-profit" />}
+            </div>
 
-          {/* Barra: o custo ocupa a parte cinza; o que sobra até a venda é a folga. */}
-          <div className="mt-2.5 flex h-1.5 overflow-hidden rounded-full bg-surface-raise" aria-hidden="true">
-            <div
-              className={`h-full transition-[width] duration-300 ${r.lucro < 0 ? 'bg-loss' : 'bg-mute/35'}`}
-              style={{ width: `${r.custoPct}%` }}
-            />
-            {r.lucro > 0 && <div className="h-full flex-1 bg-profit" />}
-          </div>
+            <div className="mt-2 flex justify-between text-[11px] tabular-nums text-mute">
+              <span>Custo {formatBRL(r.custo)}</span>
+              <span>Venda {formatBRL(r.venda)}</span>
+            </div>
+          </Card>
 
-          <div className="mt-2 flex justify-between text-[11px] tabular-nums text-mute">
-            <span>Custo {formatBRL(r.custo)}</span>
-            <span>Venda {formatBRL(r.venda)}</span>
-          </div>
-        </Card>
-      </div>
+          {/* O teclado físico já funciona (ver o useEffect acima); no desktop, onde
+              ele é o jeito natural de digitar, a tela ensina os atalhos. */}
+          <p className="mt-4 hidden text-sm leading-relaxed text-mute lg:block">
+            Digite os valores pelo teclado: <Tecla>Enter</Tecla> avança para o próximo campo,{' '}
+            <Tecla>↑</Tecla> volta, <Tecla>⌫</Tecla> apaga e <Tecla>Esc</Tecla> zera o campo.
+          </p>
+        </div>
 
-      {/* Campos. Tocar em um deles o torna o alvo do teclado. */}
-      <ul className="mt-4 border-y border-line">
-        {FIELDS.map(({ key, label }, i) => {
-          const selected = i === active
-          const filled = values[key] !== ''
-          return (
-            <li key={key} className="border-b border-line last:border-b-0">
+        <div>
+          {/* Campos. Tocar em um deles o torna o alvo do teclado. */}
+          <ul className="mt-4 border-y border-line lg:mt-0 lg:overflow-hidden lg:rounded-3xl lg:border lg:bg-surface-card lg:shadow-card">
+            {FIELDS.map(({ key, label }, i) => {
+              const selected = i === active
+              const filled = values[key] !== ''
+              return (
+                <li key={key} className="border-b border-line last:border-b-0">
+                  <button
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setActive(i)}
+                    className={`flex w-full items-center justify-between border-l-2 px-4 py-3.5 text-left transition-colors ${
+                      selected ? 'border-brik bg-surface-raise' : 'border-transparent hover:bg-surface-raise/60'
+                    }`}
+                  >
+                    <span className={`text-sm ${selected ? 'font-medium text-strong' : 'text-mute'}`}>{label}</span>
+                    <span className="flex items-center gap-0.5">
+                      <span className={`text-base font-bold tabular-nums ${filled ? 'text-strong' : 'text-mute/60'}`}>
+                        {formatBRL(Number(values[key] || 0))}
+                      </span>
+                      {selected && (
+                        <span aria-hidden="true" className="h-5 w-0.5 rounded-full bg-brik motion-safe:animate-pulse" />
+                      )}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+
+          {/* Teclado */}
+          <div className="grid auto-rows-[3.5rem] grid-cols-4 gap-2 px-4 pt-4 lg:px-0">
+            {KEYS.map(({ label, key, aria, tone = 'num' }) => (
               <button
+                key={key}
                 type="button"
-                aria-pressed={selected}
-                onClick={() => setActive(i)}
-                className={`flex w-full items-center justify-between border-l-2 px-4 py-3.5 text-left transition-colors ${
-                  selected ? 'border-brik bg-surface-raise' : 'border-transparent hover:bg-surface-raise/60'
-                }`}
+                aria-label={aria}
+                onClick={() => tap(key)}
+                className={`flex items-center justify-center rounded-2xl tabular-nums transition-colors ${TONE[tone]}`}
               >
-                <span className={`text-sm ${selected ? 'font-medium text-strong' : 'text-mute'}`}>{label}</span>
-                <span className="flex items-center gap-0.5">
-                  <span className={`text-base font-bold tabular-nums ${filled ? 'text-strong' : 'text-mute/60'}`}>
-                    {formatBRL(Number(values[key] || 0))}
+                {key === 'next' && isLast ? (
+                  // Sem o espaçamento entre letras: numa tecla de 1/4 da largura,
+                  // "SALVAR" e "CÁLCULO" precisam caber inteiros, um por linha.
+                  <span className="whitespace-nowrap tracking-normal">
+                    Salvar
+                    <br />
+                    cálculo
                   </span>
-                  {selected && (
-                    <span aria-hidden="true" className="h-5 w-0.5 rounded-full bg-brik motion-safe:animate-pulse" />
-                  )}
-                </span>
+                ) : (
+                  label
+                )}
               </button>
-            </li>
-          )
-        })}
-      </ul>
-
-      {/* Teclado */}
-      <div className="grid auto-rows-[3.5rem] grid-cols-4 gap-2 px-4 pt-4">
-        {KEYS.map(({ label, key, aria, tone = 'num' }) => (
-          <button
-            key={key}
-            type="button"
-            aria-label={aria}
-            onClick={() => tap(key)}
-            className={`flex items-center justify-center rounded-2xl tabular-nums transition-colors ${TONE[tone]}`}
-          >
-            {key === 'next' && isLast ? (
-              // Sem o espaçamento entre letras: numa tecla de 1/4 da largura,
-              // "SALVAR" e "CÁLCULO" precisam caber inteiros, um por linha.
-              <span className="whitespace-nowrap tracking-normal">
-                Salvar
-                <br />
-                cálculo
-              </span>
-            ) : (
-              label
-            )}
-          </button>
-        ))}
+            ))}
+          </div>
+        </div>
       </div>
 
       {naming && <NomeDoBrique nome={nome} onChange={setNome} onSubmit={adicionar} onClose={fecharFolha} />}
@@ -249,13 +263,23 @@ function Calculadora() {
   )
 }
 
-// Folha que sobe do rodapé pedindo o nome do brique. Tocar fora dela fecha.
+// Tecla desenhada no meio do texto de ajuda do desktop.
+function Tecla({ children }) {
+  return (
+    <kbd className="rounded-md border border-line bg-surface-card px-1.5 py-0.5 font-sans text-xs font-medium text-strong shadow-card">
+      {children}
+    </kbd>
+  )
+}
+
+// Folha que sobe do rodapé pedindo o nome do brique. Tocar fora dela fecha. No
+// desktop vira uma janela no centro da tela.
 function NomeDoBrique({ nome, onChange, onSubmit, onClose }) {
   const input = useRef(null)
   useEffect(() => input.current?.focus(), [])
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center lg:items-center">
       <button
         type="button"
         aria-label="Cancelar"
@@ -267,7 +291,7 @@ function NomeDoBrique({ nome, onChange, onSubmit, onClose }) {
         aria-modal="true"
         aria-labelledby="nome-brique"
         onSubmit={onSubmit}
-        className="relative w-full max-w-md rounded-t-3xl bg-surface px-4 pb-8 pt-5 shadow-xl"
+        className="relative w-full max-w-md rounded-t-3xl bg-surface px-4 pb-8 pt-5 shadow-xl lg:rounded-3xl lg:px-6 lg:pb-6"
       >
         <label id="nome-brique" htmlFor="nome-brique-input" className={`${LABEL} text-mute`}>
           Qual é o nome do brique?

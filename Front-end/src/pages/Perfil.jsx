@@ -13,24 +13,26 @@ import {
 } from '../components/icons.jsx'
 import { supabase } from '../lib/supabase.js'
 
-// "Meu Perfil": conta e ajustes. O nome ainda é um genérico e, fora o "Sair",
-// os itens da lista não levam a lugar nenhum — cada um espera a sua própria tela.
+// "Meu Perfil": conta e ajustes. O nome ainda é um genérico. Cada item da lista
+// abre a sua tela (pages/perfil/); o "Sair" encerra a sessão.
 
 const ITENS = [
-  { key: 'privacidade', label: 'Privacidade', Icon: LockIcon },
-  { key: 'notificacoes', label: 'Notificações', Icon: BellIcon },
-  { key: 'configuracoes', label: 'Configurações', Icon: GearIcon },
-  { key: 'ajuda', label: 'Ajuda e Suporte', Icon: SupportIcon },
-  { key: 'termos', label: 'Termos de Uso', Icon: DocIcon },
+  { key: 'privacidade', label: 'Privacidade', Icon: LockIcon, to: '/perfil/privacidade' },
+  { key: 'notificacoes', label: 'Notificações', Icon: BellIcon, to: '/perfil/notificacoes' },
+  { key: 'configuracoes', label: 'Configurações', Icon: GearIcon, to: '/perfil/configuracoes' },
+  { key: 'ajuda', label: 'Ajuda e Suporte', Icon: SupportIcon, to: '/perfil/ajuda' },
+  { key: 'termos', label: 'Termos de Uso', Icon: DocIcon, to: '/perfil/termos' },
   { key: 'sair', label: 'Sair', Icon: LogoutIcon, perigo: true },
 ]
 
-function Item({ label, Icon, perigo, onClick }) {
+// Com `to` o item é um link para a sua tela; sem, é um botão (o "Sair").
+function Item({ label, Icon, perigo, to, onClick }) {
+  const Tag = to ? Link : 'button'
+  const props = to ? { to, viewTransition: true } : { type: 'button', onClick }
   return (
     <li>
-      <button
-        type="button"
-        onClick={onClick}
+      <Tag
+        {...props}
         className="flex w-full items-center gap-3 rounded-xl bg-surface-card px-3 py-3 text-left ring-1 ring-line transition-colors hover:bg-surface-raise"
       >
         <span
@@ -49,7 +51,7 @@ function Item({ label, Icon, perigo, onClick }) {
           aria-hidden="true"
           className={`h-4 w-4 shrink-0 ${perigo ? 'text-loss' : 'text-brik'}`}
         />
-      </button>
+      </Tag>
     </li>
   )
 }
@@ -63,10 +65,10 @@ function Perfil() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl lg:max-w-2xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
 
-      <main className="px-4">
+      <main className="px-4 lg:pt-6">
         <div className="flex flex-col items-center pt-6">
           <span
             aria-hidden="true"
@@ -87,9 +89,10 @@ function Perfil() {
         </div>
 
         {/* Atalho para o passo a passo de quem está começando. */}
-        <button
-          type="button"
-          className="mt-6 flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-brik-dark to-brik p-4 text-left text-white"
+        <Link
+          to="/perfil/primeiro-brique"
+          viewTransition
+          className="mt-6 flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-brik-dark to-brik p-4 text-left text-white transition-opacity hover:opacity-95"
         >
           <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paper">
             <TrophyIcon className="h-6 w-6 text-brik" />
@@ -103,7 +106,7 @@ function Perfil() {
           </span>
 
           <ChevronRightIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-white/75" />
-        </button>
+        </Link>
 
         <h1 className="sr-only">Meu Perfil</h1>
 
