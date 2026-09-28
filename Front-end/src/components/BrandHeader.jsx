@@ -19,7 +19,7 @@ function BrandHeader({ dashboard = false, voltarPara, className = '', children, 
   // não encolhe nem sobe, apenas desliza da esquerda para o centro.
   const base = dashboard
     ? 'sticky top-0 z-40 bg-surface px-5 py-2.5'
-    : 'rounded-b-[2rem] bg-brik px-5 pb-6 pt-6'
+    : 'rounded-b-[2rem] bg-brik-fundo px-5 pb-6 pt-6'
 
   return (
     <header className={`${base} ${children ? '' : soNoCelular} ${className}`} {...props}>
@@ -42,7 +42,7 @@ function BrandHeader({ dashboard = false, voltarPara, className = '', children, 
         <img
           src="/logoBrik.png"
           alt="Brik"
-          className={`h-9 w-auto ${dashboard ? '[filter:brightness(0)_opacity(0.83)]' : ''}`}
+          className={`h-9 w-auto ${dashboard ? '[filter:brightness(0)_opacity(0.83)] dark:[filter:none]' : ''}`}
           style={{ viewTransitionName: 'brik-logo' }}
         />
       </div>

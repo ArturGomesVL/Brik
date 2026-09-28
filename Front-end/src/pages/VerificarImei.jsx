@@ -36,7 +36,7 @@ function VerificarImei() {
   const valido = completo && imeiValido(imei)
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl lg:max-w-7xl lg:pb-16 lg:shadow-none">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-28 shadow-xl lg:max-w-7xl lg:pb-16 lg:shadow-none">
       <BrandHeader />
 
       {/* Celular: a tela não funciona aqui, só avisa. */}
@@ -89,7 +89,7 @@ function VerificarImei() {
                 value={imei}
                 onChange={(event) => setImei(event.target.value.replace(/\D/g, '').slice(0, DIGITOS))}
                 aria-describedby="imei-status"
-                className="min-w-0 flex-1 rounded-2xl border border-line bg-white px-5 py-4 font-mono text-2xl tracking-[0.12em] text-ink outline-none placeholder:font-sans placeholder:text-lg placeholder:tracking-normal placeholder:text-ink/35 focus:border-brik"
+                className="min-w-0 flex-1 rounded-2xl border border-line bg-surface-card px-5 py-4 font-mono text-2xl tracking-[0.12em] text-ink outline-none placeholder:font-sans placeholder:text-lg placeholder:tracking-normal placeholder:text-ink/35 focus:border-brik"
               />
               <button
                 type="submit"

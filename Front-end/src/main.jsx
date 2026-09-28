@@ -4,6 +4,16 @@ import './index.css'
 import App from './App.jsx'
 // Começa a acompanhar a sessão do Supabase Auth já na abertura.
 import './stores/useAuthStore.js'
+import { usePreferenciasStore } from './stores/usePreferenciasStore.js'
+
+// Modo escuro (Configurações): vira data-tema no <html>, e o index.css troca os
+// tokens de cor. Aplica antes de montar, para a primeira tela já vir no tema
+// certo, e de novo a cada vez que o interruptor muda.
+function aplicarTema({ modoEscuro }) {
+  document.documentElement.dataset.tema = modoEscuro ? 'escuro' : 'claro'
+}
+aplicarTema(usePreferenciasStore.getState())
+usePreferenciasStore.subscribe(aplicarTema)
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -7,7 +7,7 @@ import { ArrowLeftIcon } from './icons.jsx'
 // conteúdo numa coluna, mais larga no desktop.
 export function SubPagina({ titulo, descricao, voltarPara = '/perfil', children }) {
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl lg:max-w-2xl lg:pb-12 lg:shadow-none">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-28 shadow-xl lg:max-w-2xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
 
       <div className="flex items-center gap-2 px-4 pt-4 lg:pt-12">

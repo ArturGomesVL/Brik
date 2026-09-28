@@ -7,7 +7,7 @@ import { CalculatorIcon, ChevronRightIcon } from '../components/icons.jsx'
 // de navegação, com navbar; quem faz a conta é /calculadora/nova.
 function CalculadoraHome() {
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl lg:max-w-2xl lg:pb-12 lg:shadow-none">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-28 shadow-xl lg:max-w-2xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
 
       <main className="px-4 pt-6 lg:pt-12">

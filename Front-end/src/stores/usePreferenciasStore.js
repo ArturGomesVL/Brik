@@ -9,6 +9,9 @@ import { TODAS } from '../config/cidades.js'
 export const usePreferenciasStore = create(
   persist(
     (set) => ({
+      // Configurações > Aparência: o app inteiro no modo escuro (main.jsx aplica).
+      modoEscuro: false,
+
       // Privacidade: o Dashboard já abre com os valores escondidos.
       ocultarValores: false,
 
@@ -31,6 +34,7 @@ export const usePreferenciasStore = create(
       // Passos para seu primeiro Brique: índices dos passos marcados.
       passosFeitos: [],
 
+      setModoEscuro: (modoEscuro) => set({ modoEscuro }),
       setOcultarValores: (ocultarValores) => set({ ocultarValores }),
       setNivelMinimo: (nivelMinimo) => set({ nivelMinimo }),
       setCidade: (cidade) => set({ cidade }),

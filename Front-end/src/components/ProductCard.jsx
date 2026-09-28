@@ -25,7 +25,7 @@ function ProductCard({ item }) {
   const profitPct = hasMarket ? Math.round((profit / item.price) * 100) : null
 
   return (
-    <article className="relative flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_6px_18px_-6px_rgba(43,43,43,0.25)] ring-1 ring-ink/5">
+    <article className="relative flex h-full flex-col overflow-hidden rounded-2xl bg-surface-card shadow-[0_6px_18px_-6px_rgba(43,43,43,0.25)] ring-1 ring-ink/5">
       <a
         href={item.url}
         target="_blank"
@@ -127,7 +127,7 @@ function ProductCard({ item }) {
 
 export function ProductCardSkeleton() {
   return (
-    <div className="overflow-hidden rounded-2xl bg-white shadow-[0_6px_18px_-6px_rgba(43,43,43,0.25)] ring-1 ring-ink/5" aria-hidden="true">
+    <div className="overflow-hidden rounded-2xl bg-surface-card shadow-[0_6px_18px_-6px_rgba(43,43,43,0.25)] ring-1 ring-ink/5" aria-hidden="true">
       <div className="skeleton aspect-[4/3] w-full" />
       <div className="flex flex-col gap-2.5 p-3 pb-14">
         <div className="skeleton h-3.5 w-full rounded" />

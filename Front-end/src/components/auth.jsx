@@ -25,7 +25,7 @@ const REDES = [
 
 export function AuthLayout({ children }) {
   return (
-    <div className="login-bg relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-8">
+    <div className="login-bg tema-claro relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-8">
       {/* Manchas de luz atrás do card: sem nada contrastando por trás, o vidro
           liso não mostra o desfoque. */}
       <span

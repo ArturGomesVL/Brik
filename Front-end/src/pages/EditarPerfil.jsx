@@ -40,7 +40,7 @@ function Campo({ label, Icon, editavel = true, ...props }) {
   return (
     <label className="block">
       <span className="mb-1 block text-[11px] text-ink/50">{label}</span>
-      <span className="flex items-center gap-2.5 rounded-lg border border-line bg-white px-3 py-2.5 focus-within:border-brik">
+      <span className="flex items-center gap-2.5 rounded-lg border border-line bg-surface-card px-3 py-2.5 focus-within:border-brik">
         <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-ink" />
         <input
           className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink/35"
@@ -87,7 +87,7 @@ function EditarPerfil() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-10 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-10 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
       <BrandHeader voltarPara="/perfil" />
 
       {/* No celular a seta e a logo estão no header verde, e o título é só para
@@ -109,7 +109,7 @@ function EditarPerfil() {
         onSubmit={salvar}
         className="flex flex-col gap-4 px-4 lg:grid lg:grid-cols-[18rem_1fr] lg:items-start lg:gap-6 lg:px-8"
       >
-        <section className="relative -mt-3 rounded-2xl bg-white px-4 pb-4 pt-3 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.35)] lg:mt-0">
+        <section className="relative -mt-3 rounded-2xl bg-surface-card px-4 pb-4 pt-3 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.35)] lg:mt-0">
           <h2 className="text-xs font-bold text-ink/50">Foto de Perfil</h2>
 
           <div className="mt-2 flex items-center gap-4">
@@ -141,7 +141,7 @@ function EditarPerfil() {
           </div>
         </section>
 
-        <section className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.35)]">
+        <section className="flex flex-col gap-3 rounded-2xl bg-surface-card p-4 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.35)]">
           <Secao Icon={PersonIcon} titulo="Informações Pessoais" />
 
           <Campo

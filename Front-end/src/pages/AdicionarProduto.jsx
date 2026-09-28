@@ -27,7 +27,7 @@ const VAZIO = {
 }
 
 const CAMPO =
-  'w-full rounded-lg border border-line bg-white px-4 py-3.5 text-[15px] text-ink outline-none placeholder:text-ink/40 focus:border-brik'
+  'w-full rounded-lg border border-line bg-surface-card px-4 py-3.5 text-[15px] text-ink outline-none placeholder:text-ink/40 focus:border-brik'
 
 function Campo({ label, value, onChange, ...props }) {
   return (
@@ -51,7 +51,7 @@ function Selecao({ label, value, onChange, options }) {
         }`}
         style={{
           backgroundImage:
-            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b1b4d' stroke-opacity='0.4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")",
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23808080' stroke-opacity='0.8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")",
         }}
       >
         <option value="" disabled>
@@ -76,7 +76,7 @@ const QUADRADO = 'w-[calc((100%-1rem)/3)]'
 function Fotos({ fotos, onAdd }) {
   return (
     <div className="flex flex-col items-center gap-3">
-      <label className="flex aspect-square w-3/5 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-dashed border-ink/25 bg-white text-center transition-colors hover:border-brik focus-within:border-brik lg:w-full">
+      <label className="flex aspect-square w-3/5 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-dashed border-ink/25 bg-surface-card text-center transition-colors hover:border-brik focus-within:border-brik lg:w-full">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-raise text-ink/50">
           <CameraIcon className="h-7 w-7" />
         </span>
@@ -138,7 +138,7 @@ function AdicionarProduto() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-10 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-10 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
 
       <div className="flex items-center gap-2 px-4 pt-4 lg:px-8 lg:pt-10">

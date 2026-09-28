@@ -71,7 +71,7 @@ function Home() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl lg:max-w-none lg:pb-12 lg:shadow-none">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-28 shadow-xl lg:max-w-none lg:pb-12 lg:shadow-none">
       <BrandHeader className="lg:rounded-none lg:px-0 lg:pb-8 lg:pt-8">
         {/* No desktop a logo fica na TopBar, e o header verde vira a faixa de busca,
             de ponta a ponta, com o conteúdo na mesma largura da TopBar (max-w-7xl). */}
@@ -79,7 +79,7 @@ function Home() {
           <h1 className="mb-4 hidden text-2xl font-bold tracking-tight text-paper lg:block">Ofertas para garimpar</h1>
           {/* Busca e cidade: uma embaixo da outra no celular, lado a lado no desktop. */}
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
-            <label className="flex items-center gap-3 rounded-full bg-white px-5 py-3 shadow-[0_8px_20px_-8px_rgba(43,43,43,0.5)] focus-within:ring-4 focus-within:ring-white/40 lg:w-full lg:max-w-xl">
+            <label className="flex items-center gap-3 rounded-full bg-surface-card px-5 py-3 shadow-[0_8px_20px_-8px_rgba(43,43,43,0.5)] focus-within:ring-4 focus-within:ring-white/40 lg:w-full lg:max-w-xl">
               <SearchIcon className="h-5 w-5 shrink-0 text-brik" />
               <span className="sr-only">Procurar oferta de brique</span>
               <input

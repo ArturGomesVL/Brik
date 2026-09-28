@@ -65,7 +65,7 @@ function Perfil() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-28 shadow-xl lg:max-w-2xl lg:pb-12 lg:shadow-none">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-28 shadow-xl lg:max-w-2xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
 
       <main className="px-4 lg:pt-6">

@@ -54,7 +54,7 @@ const VAZIO = { orcamento: '', cidade: '', distancia: '', categoria: '', semPref
 // Trilho de progresso: três pontos ligados, o do passo atual maior e em petróleo.
 function Progresso({ atual }) {
   return (
-    <div aria-hidden="true" className="flex items-center rounded-full bg-white px-5 py-3.5 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.25)]">
+    <div aria-hidden="true" className="flex items-center rounded-full bg-surface-card px-5 py-3.5 shadow-[0_6px_18px_-8px_rgba(43,43,43,0.25)]">
       {Array.from({ length: TOTAL }, (_, i) => (
         <span key={i} className="flex items-center">
           {i > 0 && <span className="h-0.5 w-14 bg-line" />}
@@ -88,7 +88,7 @@ function Caixa({ label, htmlFor, children }) {
       <label htmlFor={htmlFor} className="mb-2 block text-xs font-bold text-ink">
         {label}
       </label>
-      <div className="relative flex h-14 items-center gap-3 rounded-xl border-[1.5px] border-brik/70 bg-white px-4 shadow-[0_4px_14px_-8px_rgba(15,76,92,0.45)] focus-within:border-brik focus-within:ring-2 focus-within:ring-brik/20">
+      <div className="relative flex h-14 items-center gap-3 rounded-xl border-[1.5px] border-brik/70 bg-surface-card px-4 shadow-[0_4px_14px_-8px_rgba(15,76,92,0.45)] focus-within:border-brik focus-within:ring-2 focus-within:ring-brik/20">
         {children}
       </div>
     </div>
@@ -211,7 +211,7 @@ function Quiz() {
   // No desktop o quiz vira um cartão no meio da tela: esticado até o rodapé, o
   // "Continuar" ficaria longe demais das perguntas.
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-paper px-7 pb-12 pt-10 shadow-xl lg:my-12 lg:min-h-[44rem] lg:max-w-lg lg:rounded-3xl lg:border lg:border-line lg:px-12">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-surface px-7 pb-12 pt-10 shadow-xl lg:my-12 lg:min-h-[44rem] lg:max-w-lg lg:rounded-3xl lg:border lg:border-line lg:px-12">
       <div className="relative flex items-center justify-center">
         {!(obrigatorio && passo === 0) && (
           <button
@@ -325,7 +325,7 @@ function Quiz() {
                     setForm((atual) => ({ ...atual, categoria: '', semPreferencia: !atual.semPreferencia }))
                   }
                   className={`mt-3 h-12 w-full rounded-xl border-[1.5px] border-brik text-sm font-bold transition-colors ${
-                    form.semPreferencia ? 'bg-brik text-paper' : 'bg-white text-brik hover:bg-brik/[0.06]'
+                    form.semPreferencia ? 'bg-brik text-paper' : 'bg-surface-card text-brik hover:bg-brik/[0.06]'
                   }`}
                 >
                   Não

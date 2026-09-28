@@ -84,7 +84,7 @@ function PrimeiroBrique() {
                 aria-label={`Marcar "${titulo}" como feito`}
                 onClick={() => alternarPasso(i)}
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${
-                  feito ? 'bg-profit text-white' : 'bg-surface-raise text-brik hover:bg-line'
+                  feito ? 'bg-profit text-surface' : 'bg-surface-raise text-brik hover:bg-line'
                 }`}
               >
                 {feito ? '✓' : i + 1}

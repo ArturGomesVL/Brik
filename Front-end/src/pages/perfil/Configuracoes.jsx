@@ -2,16 +2,24 @@ import { Grupo, Interruptor, Linha, Nota, SubPagina } from '../../components/Sub
 import { CATEGORIAS, NIVEIS } from '../../config/categorias.js'
 import { usePreferenciasStore } from '../../stores/usePreferenciasStore.js'
 
-// Configurações do feed. As duas escolhas daqui filtram o Início de verdade
-// (ver o `visible` de Home.jsx).
+// Configurações: a aparência do app e o que aparece no feed. As escolhas do feed
+// filtram o Início de verdade (ver o `visible` de Home.jsx).
 function Configuracoes() {
   const categorias = usePreferenciasStore((state) => state.categorias)
   const alternarCategoria = usePreferenciasStore((state) => state.alternarCategoria)
   const nivelMinimo = usePreferenciasStore((state) => state.nivelMinimo)
   const setNivelMinimo = usePreferenciasStore((state) => state.setNivelMinimo)
+  const modoEscuro = usePreferenciasStore((state) => state.modoEscuro)
+  const setModoEscuro = usePreferenciasStore((state) => state.setModoEscuro)
 
   return (
-    <SubPagina titulo="Configurações" descricao="Ajuste o que aparece no seu Início.">
+    <SubPagina titulo="Configurações" descricao="Ajuste a aparência do app e o que aparece no seu Início.">
+      <Grupo titulo="Aparência">
+        <Linha titulo="Modo escuro" detalhe="Deixa o app inteiro com fundo escuro, mais confortável à noite.">
+          <Interruptor ligado={modoEscuro} onChange={setModoEscuro} label="Modo escuro" />
+        </Linha>
+      </Grupo>
+
       <Grupo titulo="Categorias no Início">
         {CATEGORIAS.map(({ value, label, Icon }) => {
           const ligada = categorias.includes(value)

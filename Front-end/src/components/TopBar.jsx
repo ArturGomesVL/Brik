@@ -12,7 +12,7 @@ const ABAS = [...NAV_ITEMS.filter((item) => !item.conta), ...DESKTOP_ITEMS]
 // sublinhada, e o "+" vira o botão de destaque na ponta direita.
 function TopBar() {
   return (
-    <header className="sticky top-0 z-50 hidden border-b border-line bg-white lg:block">
+    <header className="sticky top-0 z-50 hidden border-b border-line bg-surface-card lg:block">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-10 px-8">
         {/* O arquivo da logo é branco; aqui ele vira máscara sobre o petróleo. */}
         <NavLink to="/" viewTransition aria-label="Brik, início" className="shrink-0">

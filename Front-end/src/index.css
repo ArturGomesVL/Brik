@@ -1,6 +1,11 @@
 @import url("https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap");
 @import "tailwindcss";
 
+/* dark: vale quando o <html> tem data-tema="escuro" (o interruptor fica em Meu
+   Perfil > Configurações; ver main.jsx). Só para os poucos ajustes que não saem
+   da troca de tokens abaixo, como a logo do Dashboard. */
+@custom-variant dark (&:where([data-tema="escuro"], [data-tema="escuro"] *));
+
 @theme {
   --font-sans: "Rubik", ui-sans-serif, system-ui, sans-serif;
 
@@ -17,6 +22,9 @@
   --color-paper: #f8f7f4; /* Marfim: fundo principal */
   --color-brik: #0f4c5c; /* Azul petróleo: cor da marca */
   --color-brik-dark: #0a3540; /* azul petróleo mais escuro: hover e gradientes */
+  /* Faixas grandes da marca (o header verde). No claro é o próprio petróleo; no
+     escuro fica mais fundo que o brik dos botões, para não ofuscar. */
+  --color-brik-fundo: #0f4c5c;
   --color-accent: #0046d8; /* Azul royal: destaques pontuais */
   --color-ink: #2b2b2b; /* Grafite: títulos e ícones */
   --color-line: #d9d9d6; /* Cinza claro: bordas e divisórias */
@@ -50,8 +58,70 @@
   --shadow-card: 0 1px 2px rgba(43, 43, 43, 0.06), 0 1px 1px rgba(43, 43, 43, 0.04);
 }
 
+/* Rampa da rosca de ROIs (ver dashboard/palette.js): quanto mais forte, melhor
+   o retorno. No claro, "forte" é o petróleo escuro; no escuro, o mais claro. */
+:root {
+  --roi-1: #0f4c5c;
+  --roi-2: #3a6d7a;
+  --roi-3: #6b929c;
+  --roi-4: #9db8bf;
+  --roi-5: #cfdfe3;
+}
+
+/* Modo escuro ------------------------------------------------------------
+   Os componentes usam os tokens pelo papel (surface, ink, line...), então
+   escurecer o app é trocar os valores aqui. Duas exceções de propósito:
+     - paper continua marfim: além de fundo antigo, é o texto e os selos claros
+       sobre o petróleo (botões, header verde), que seguem claros no escuro. Os
+       fundos de página usam surface.
+     - brik clareia um pouco: é fundo de botão com texto branco e também texto e
+       ícone sobre o fundo escuro, e precisa se ler nos dois papéis. */
+:root[data-tema="escuro"] {
+  color-scheme: dark;
+
+  --color-surface: #0e1618;
+  --color-surface-card: #152124;
+  --color-surface-raise: #1e2c30;
+  --color-line: #2b3b3f;
+  --color-ink: #e6ebea;
+  --color-strong: #e6ebea;
+  --color-mute: #93a19f;
+
+  --color-brik: #2a8aa0;
+  --color-brik-dark: #1f6f82;
+  --color-brik-fundo: #123f4a;
+  --color-accent: #6d9bff;
+
+  --color-profit: #5cbf8a;
+  --color-gain: #5cbf8a;
+  --color-gain-bg: #16302a;
+  --color-loss: #e57a63;
+  --color-warn: #86a6ff;
+
+  --color-level-boa: #1b2a47;
+  --color-level-boa-ink: #a8c2ff;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  --roi-1: #7cc3d2;
+  --roi-2: #5aa3b3;
+  --roi-3: #428391;
+  --roi-4: #316570;
+  --roi-5: #264c54;
+}
+
+/* Telas que são sempre claras por dentro, mesmo no modo escuro (o card de vidro
+   do login e do cadastro): devolvem os tokens de texto e de campo ao claro. */
+.tema-claro {
+  color-scheme: light;
+  --color-ink: #2b2b2b;
+  --color-strong: #2b2b2b;
+  --color-brik: #0f4c5c;
+  --color-brik-dark: #0a3540;
+}
+
 body {
-  background: var(--color-paper);
+  background: var(--color-surface);
   color: var(--color-ink);
 }
 
@@ -73,7 +143,13 @@ body {
 .star-pop { animation: star-pop 0.35s ease-out; }
 
 .skeleton {
-  background: linear-gradient(100deg, #ecebe6 30%, #f8f7f4 50%, #ecebe6 70%) 0 0 / 200% 100%;
+  background: linear-gradient(
+      100deg,
+      var(--color-surface-raise) 30%,
+      var(--color-surface) 50%,
+      var(--color-surface-raise) 70%
+    )
+    0 0 / 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
 

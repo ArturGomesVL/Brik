@@ -55,7 +55,7 @@ function Foto({ src }) {
 
 function Produto({ item, onStatus }) {
   return (
-    <li className="rounded-2xl border border-line bg-white p-3.5 shadow-[0_2px_8px_-4px_rgba(43,43,43,0.15)]">
+    <li className="rounded-2xl border border-line bg-surface-card p-3.5 shadow-[0_2px_8px_-4px_rgba(43,43,43,0.15)]">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium text-ink/70">{item.data}</p>
         <Menu />
@@ -127,7 +127,7 @@ function MeusProdutos() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md bg-paper pb-44 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
+    <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-44 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
 
       <div className="flex items-center gap-2 px-4 pt-4 lg:px-8 lg:pt-12">
