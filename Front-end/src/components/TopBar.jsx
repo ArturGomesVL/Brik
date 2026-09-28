@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { NAV_ITEMS, ADD_ITEM } from '../config/navItems.js'
+import { NAV_ITEMS, ADD_ITEM, DESKTOP_ITEMS } from '../config/navItems.js'
 import { AvatarIcon, PlusIcon } from './icons.jsx'
 
 // A conta vira a pílula com avatar à direita; as outras abas ficam em linha,
-// ao lado da logo.
+// ao lado da logo, seguidas das telas que só existem no desktop.
 const CONTA = NAV_ITEMS.find((item) => item.conta)
-const ABAS = NAV_ITEMS.filter((item) => !item.conta)
+const ABAS = [...NAV_ITEMS.filter((item) => !item.conta), ...DESKTOP_ITEMS]
 
 // Navegação do desktop (a partir de lg). Faz o papel da Navbar, que no desktop
 // some: as mesmas abas de NAV_ITEMS numa barra branca no topo, com a aba ativa

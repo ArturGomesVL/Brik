@@ -16,6 +16,7 @@ import Login from './pages/Login.jsx'
 import Cadastro from './pages/Cadastro.jsx'
 import Quiz from './pages/Quiz.jsx'
 import EmBreve from './pages/EmBreve.jsx'
+import VerificarImei from './pages/VerificarImei.jsx'
 import Privacidade from './pages/perfil/Privacidade.jsx'
 import Notificacoes from './pages/perfil/Notificacoes.jsx'
 import Configuracoes from './pages/perfil/Configuracoes.jsx'
@@ -40,6 +41,8 @@ const router = createBrowserRouter([
           { path: '/perfil', element: <Perfil /> },
           // O "+" da navbar abre o estoque do usuário.
           { path: '/adicionar', element: <MeusProdutos /> },
+          // Só no desktop (link na TopBar); no celular a tela avisa isso.
+          { path: '/imei', element: <VerificarImei /> },
           // Itens da lista do Meu Perfil. Ficam no Layout (com navbar, e a aba
           // Meu Perfil acesa) e voltam para o perfil pela seta do título.
           { path: '/perfil/privacidade', element: <Privacidade /> },
