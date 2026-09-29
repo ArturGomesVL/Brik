@@ -127,7 +127,10 @@ function FiltroCidade({ value, onChange, cidades, total, lateral = false }) {
         className={classeBotaoPainel(lateral, aberto)}
       >
         <span className="sr-only">Cidade:</span>
-        <PinIcon aria-hidden="true" className={`h-4 w-4 shrink-0 ${lateral ? 'text-brik' : 'text-mint'}`} />
+        <PinIcon
+          aria-hidden="true"
+          className={`shrink-0 ${lateral ? 'h-4 w-4 text-brik' : 'h-3.5 w-3.5 text-mint sm:h-4 sm:w-4'}`}
+        />
         <span className={`truncate ${lateral ? 'flex-1 text-left' : 'max-w-[8.5rem] sm:max-w-[14rem]'}`}>{atual.nome}</span>
         <span
           className={`rounded-full px-1.5 text-[11px] font-bold tabular-nums ${
@@ -138,7 +141,9 @@ function FiltroCidade({ value, onChange, cidades, total, lateral = false }) {
         </span>
         <ChevronDownIcon
           aria-hidden="true"
-          className={`h-4 w-4 shrink-0 transition-transform duration-300 ${aberto ? 'rotate-180' : ''}`}
+          className={`shrink-0 transition-transform duration-300 ${lateral ? 'h-4 w-4' : 'h-3.5 w-3.5 sm:h-4 sm:w-4'} ${
+            aberto ? 'rotate-180' : ''
+          }`}
         />
       </button>
 
@@ -146,12 +151,13 @@ function FiltroCidade({ value, onChange, cidades, total, lateral = false }) {
         <div
           className={`painel-pop ${classePosicaoPainel(lateral)} overflow-hidden rounded-2xl bg-surface-card text-ink ring-1 ring-line`}
         >
-          {/* Mini-mapa. A perspectiva fica no pai para a inclinação ter fundo. */}
-          <div className="p-2 [perspective:900px]" onPointerMove={inclinar} onPointerLeave={endireitar}>
+          {/* Mini-mapa (mais baixo no celular). A perspectiva fica no pai para a
+              inclinação ter fundo. */}
+          <div className="p-1.5 [perspective:900px] sm:p-2" onPointerMove={inclinar} onPointerLeave={endireitar}>
             <div
               ref={mapaRef}
               aria-hidden="true"
-              className="cidade-mapa relative h-36 overflow-hidden rounded-xl bg-brik/[0.07] text-brik"
+              className="cidade-mapa relative h-24 overflow-hidden rounded-xl bg-brik/[0.07] text-brik sm:h-36"
             >
               <div className="cidade-camada absolute -inset-1/4" style={{ transform: vista(value) }}>
                 <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
@@ -186,7 +192,7 @@ function FiltroCidade({ value, onChange, cidades, total, lateral = false }) {
               {/* Pino no centro; a key refaz a queda a cada escolha. */}
               <div key={value} className="absolute left-1/2 top-[42%] -translate-x-1/2 -translate-y-full">
                 <span className="cidade-pulso absolute bottom-0 left-1/2 h-3 w-6 -translate-x-1/2 translate-y-1/2 rounded-[50%] bg-brik/40" />
-                <svg viewBox="0 0 24 24" className="cidade-pino relative h-8 w-8 drop-shadow-[0_4px_6px_rgba(15,76,92,0.45)]">
+                <svg viewBox="0 0 24 24" className="cidade-pino relative h-6 w-6 drop-shadow-[0_4px_6px_rgba(15,76,92,0.45)] sm:h-8 sm:w-8">
                   <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="currentColor" />
                   <circle cx="12" cy="9" r="2.6" className="fill-mint" />
                 </svg>
@@ -197,7 +203,7 @@ function FiltroCidade({ value, onChange, cidades, total, lateral = false }) {
                 Ao vivo
               </span>
 
-              <div className="absolute inset-x-3 bottom-2.5">
+              <div className="absolute inset-x-3 bottom-2 sm:bottom-2.5">
                 <p className="truncate text-sm font-bold text-ink">{atual.nome}</p>
                 <p className="text-[11px] text-mute">
                   {atual.detalhe ? `${atual.detalhe} · ` : ''}
@@ -212,7 +218,7 @@ function FiltroCidade({ value, onChange, cidades, total, lateral = false }) {
             ref={listaRef}
             aria-label="Escolher cidade"
             onKeyDown={navegar}
-            className="max-h-64 overflow-y-auto overscroll-contain px-2 pb-2"
+            className="max-h-52 overflow-y-auto overscroll-contain px-1.5 pb-1.5 sm:max-h-64 sm:px-2 sm:pb-2"
           >
             {opcoes.map((opcao, i) => {
               const escolhida = opcao.value === value
@@ -222,7 +228,7 @@ function FiltroCidade({ value, onChange, cidades, total, lateral = false }) {
                     type="button"
                     aria-pressed={escolhida}
                     onClick={() => escolher(opcao.value)}
-                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brik/40 ${
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors sm:py-2 sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brik/40 ${
                       escolhida ? 'bg-brik/10 font-bold text-brik' : 'text-ink hover:bg-surface-raise'
                     }`}
                   >

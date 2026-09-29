@@ -2,16 +2,17 @@ import { useEffect } from 'react'
 
 // Os filtros do Início aparecem em dois lugares: no header verde do celular,
 // como pílula de vidro sobre o petróleo, e na coluna lateral do desktop
-// (`lateral`), como botão claro de largura cheia.
-export function classeBotaoPainel(lateral, aberto) {
-  const base =
-    'flex items-center gap-2 text-sm font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2'
+// (`lateral`), como botão claro de largura cheia. No celular a pílula é mais
+// baixa e mais justa; `soIcone` é o Filtros, que ali mostra só o ícone.
+export function classeBotaoPainel(lateral, aberto, soIcone = false) {
+  const base = 'flex items-center font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2'
   if (lateral) {
-    return `${base} w-full rounded-xl px-3 py-2.5 text-ink hover:bg-surface-raise focus-visible:ring-brik/40 ${
+    return `${base} w-full gap-2 rounded-xl px-3 py-2.5 text-sm text-ink hover:bg-surface-raise focus-visible:ring-brik/40 ${
       aberto ? 'bg-surface-raise ring-brik/40' : 'bg-surface-card ring-line'
     }`
   }
-  return `${base} rounded-full py-2 pl-4 pr-3.5 text-paper hover:bg-white/20 focus-visible:ring-mint ${
+  const espaco = soIcone ? 'p-2 sm:px-3.5' : 'py-1.5 pl-3 pr-2.5 sm:py-2 sm:pl-4 sm:pr-3.5'
+  return `${base} ${espaco} gap-1.5 rounded-full text-[13px] text-paper hover:bg-white/20 focus-visible:ring-mint sm:gap-2 sm:text-sm ${
     aberto ? 'bg-white/25 ring-white/40' : 'bg-white/15 ring-white/25'
   }`
 }

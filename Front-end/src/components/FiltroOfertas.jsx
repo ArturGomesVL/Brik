@@ -75,9 +75,12 @@ function FiltroOfertas({
         aria-haspopup="true"
         aria-expanded={aberto}
         onClick={() => setAberto((a) => !a)}
-        className={`${classeBotaoPainel(lateral, aberto)} ${lateral ? '' : 'pl-3.5'}`}
+        className={classeBotaoPainel(lateral, aberto, true)}
       >
-        <FilterIcon aria-hidden="true" className={`h-4 w-4 shrink-0 ${lateral ? 'text-brik' : 'text-mint'}`} />
+        <FilterIcon
+          aria-hidden="true"
+          className={`shrink-0 ${lateral ? 'h-4 w-4 text-brik' : 'h-3.5 w-3.5 text-mint sm:h-4 sm:w-4'}`}
+        />
         {lateral ? (
           <span className="min-w-0 flex-1 text-left">
             <span className="block">Filtros</span>
@@ -105,11 +108,11 @@ function FiltroOfertas({
         <div
           role="group"
           aria-label="Filtros das ofertas"
-          className={`painel-pop ${classePosicaoPainel(lateral)} rounded-2xl bg-surface-card p-4 text-ink ring-1 ring-line`}
+          className={`painel-pop ${classePosicaoPainel(lateral)} rounded-2xl bg-surface-card p-3 text-ink ring-1 ring-line sm:p-4`}
         >
           <section className="painel-item" style={{ '--i': 0 }}>
             <h2 className="text-[11px] font-bold uppercase tracking-wide text-mute">Selo da oferta</h2>
-            <ul className="mt-2 flex flex-col gap-1.5">
+            <ul className="mt-2 flex flex-col gap-1 sm:gap-1.5">
               {NIVEIS.map(({ value, label, desconto }) => {
                 const permitido = permitidos.includes(value)
                 const ligado = permitido && niveis.includes(value)
@@ -120,14 +123,14 @@ function FiltroOfertas({
                       aria-pressed={ligado}
                       disabled={!permitido}
                       onClick={() => alternar(value)}
-                      className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left ring-1 transition-[background-color,box-shadow,transform] duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${
+                      className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left sm:gap-3 sm:py-2 ring-1 transition-[background-color,box-shadow,transform] duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${
                         ligado ? 'bg-brik/[0.06] ring-brik/40' : 'ring-line hover:bg-surface-raise'
                       }`}
                     >
                       <span className={`whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-bold ${SELO[value]}`}>
                         {label}
                       </span>
-                      <span className="flex-1 text-xs text-mute">{desconto}%+ abaixo da média</span>
+                      <span className="flex-1 text-[11px] text-mute sm:text-xs">{desconto}%+ abaixo da média</span>
                       <span
                         aria-hidden="true"
                         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
@@ -152,7 +155,7 @@ function FiltroOfertas({
             )}
           </section>
 
-          <section className="painel-item mt-5" style={{ '--i': 1 }}>
+          <section className="painel-item mt-3.5 sm:mt-5" style={{ '--i': 1 }}>
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="text-[11px] font-bold uppercase tracking-wide text-mute">Quanto posso gastar</h2>
               <span key={precoMaximo ?? 'livre'} className="painel-valor text-sm font-bold text-brik">
@@ -160,7 +163,7 @@ function FiltroOfertas({
               </span>
             </div>
 
-            <label className="mt-2 flex items-center gap-2 rounded-lg border border-line bg-surface-card px-3 py-2 focus-within:border-brik">
+            <label className="mt-2 flex items-center gap-2 rounded-lg border border-line bg-surface-card px-3 py-1.5 focus-within:border-brik sm:py-2">
               <span className="text-sm font-medium text-mute">R$</span>
               <input
                 inputMode="numeric"
@@ -181,15 +184,16 @@ function FiltroOfertas({
               onChange={(event) => definirPreco(Number(event.target.value))}
               aria-label="Valor máximo"
               aria-valuetext={precoMaximo != null ? formatBRL(precoMaximo) : 'Sem limite'}
-              className="mt-3 w-full cursor-pointer accent-brik"
+              className="mt-2 w-full cursor-pointer accent-brik sm:mt-3"
             />
             <div className="flex justify-between text-[10px] text-mute">
               <span>{formatBRL(PASSO)}</span>
               <span>{formatBRL(teto)}+</span>
             </div>
 
+            {/* No celular, só os dois primeiros atalhos e o "Sem limite". */}
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {[...atalhos, null].map((valor) => {
+              {[...atalhos, null].map((valor, i) => {
                 const ativo = precoMaximo === valor
                 return (
                   <button
@@ -198,6 +202,8 @@ function FiltroOfertas({
                     aria-pressed={ativo}
                     onClick={() => onPrecoMaximo(valor)}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      valor != null && i >= 2 ? 'max-sm:hidden' : ''
+                    } ${
                       ativo ? 'bg-brik text-paper' : 'bg-surface-raise text-ink hover:bg-line/70'
                     }`}
                   >
@@ -208,12 +214,12 @@ function FiltroOfertas({
             </div>
           </section>
 
-          <div className="painel-item mt-5 flex gap-2" style={{ '--i': 2 }}>
+          <div className="painel-item mt-3.5 flex gap-2 sm:mt-5" style={{ '--i': 2 }}>
             <button
               type="button"
               onClick={onLimpar}
               disabled={ativos === 0}
-              className="rounded-lg border border-line px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-surface-raise disabled:opacity-40 disabled:hover:bg-transparent"
+              className="rounded-lg border border-line px-4 py-2 text-sm sm:py-2.5 font-medium text-ink transition-colors hover:bg-surface-raise disabled:opacity-40 disabled:hover:bg-transparent"
             >
               Limpar
             </button>
@@ -223,7 +229,7 @@ function FiltroOfertas({
                 setAberto(false)
                 botaoRef.current?.focus()
               }}
-              className="flex-1 rounded-lg bg-brik py-2.5 text-sm font-bold text-paper transition-colors hover:bg-brik-dark"
+              className="flex-1 rounded-lg bg-brik py-2 text-sm sm:py-2.5 font-bold text-paper transition-colors hover:bg-brik-dark"
             >
               <span aria-live="polite">
                 Ver {resultado} {resultado === 1 ? 'oferta' : 'ofertas'}
