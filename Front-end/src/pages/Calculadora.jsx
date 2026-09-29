@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeftIcon } from '../components/icons.jsx'
 import { Card } from '../components/dashboard/ui.jsx'
 import { EMPTY, FIELDS, press, resultado } from '../lib/calc.js'
+import { paraValores, salvarCalculo } from '../lib/calculos.js'
 import { formatBRL, formatDecimal, formatInt } from '../lib/format.js'
 
 // Calculadora de revenda: o usuário preenche os custos e o preço de venda com o
@@ -54,7 +55,10 @@ function Equilibrio({ lucro, margem }) {
 
 function Calculadora() {
   const navigate = useNavigate()
-  const [values, setValues] = useState(EMPTY)
+  // Aberta a partir de um cálculo salvo (lista da CalculadoraHome), começa com
+  // os valores e o nome dele; salvar de novo cria outro cálculo.
+  const { state } = useLocation()
+  const [values, setValues] = useState(() => (state?.calculo ? paraValores(state.calculo) : EMPTY))
   const [active, setActive] = useState(0)
   const r = resultado(values)
   const field = FIELDS[active].key
@@ -64,7 +68,9 @@ function Calculadora() {
 
   // Folha "nome do brique", aberta pelo botão verde no último campo.
   const [naming, setNaming] = useState(false)
-  const [nome, setNome] = useState('')
+  const [nome, setNome] = useState(state?.calculo?.nome ?? '')
+  const [salvando, setSalvando] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState('')
 
   function avancar() {
     if (active === FIELDS.length - 1) setNaming(true)
@@ -86,17 +92,23 @@ function Calculadora() {
 
   function fecharFolha() {
     setNaming(false)
-    setNome('')
+    setErroSalvar('')
   }
 
-  function adicionar(event) {
+  // Grava em public.calculos e volta para a lista, onde ele já aparece.
+  async function adicionar(event) {
     event.preventDefault()
-    if (!nome.trim()) return
-    // TODO: gravar { nome, ...values } junto dos cálculos salvos. Ainda não
-    // existe onde guardar; por enquanto fecha, zera e volta para a calculadora.
-    fecharFolha()
-    limpar()
-    navigate('/calculadora')
+    if (!nome.trim() || salvando) return
+    setSalvando(true)
+    setErroSalvar('')
+    try {
+      await salvarCalculo(nome, values)
+      navigate('/calculadora', { viewTransition: true })
+    } catch (error) {
+      console.error('Erro ao salvar o cálculo:', error)
+      setErroSalvar('Não foi possível salvar. Tente de novo.')
+      setSalvando(false)
+    }
   }
 
   // Teclado físico: no desktop a calculadora responde sem o mouse.
@@ -258,7 +270,16 @@ function Calculadora() {
         </div>
       </div>
 
-      {naming && <NomeDoBrique nome={nome} onChange={setNome} onSubmit={adicionar} onClose={fecharFolha} />}
+      {naming && (
+        <NomeDoBrique
+          nome={nome}
+          onChange={setNome}
+          onSubmit={adicionar}
+          onClose={fecharFolha}
+          salvando={salvando}
+          erro={erroSalvar}
+        />
+      )}
     </div>
   )
 }
@@ -274,7 +295,7 @@ function Tecla({ children }) {
 
 // Folha que sobe do rodapé pedindo o nome do brique. Tocar fora dela fecha. No
 // desktop vira uma janela no centro da tela.
-function NomeDoBrique({ nome, onChange, onSubmit, onClose }) {
+function NomeDoBrique({ nome, onChange, onSubmit, onClose, salvando, erro }) {
   const input = useRef(null)
   useEffect(() => input.current?.focus(), [])
 
@@ -304,14 +325,20 @@ function NomeDoBrique({ nome, onChange, onSubmit, onClose }) {
           onChange={(event) => onChange(event.target.value)}
           placeholder="Ex.: iPhone 12 128GB"
           autoComplete="off"
+          maxLength={80}
           className="mt-2.5 w-full rounded-2xl border border-line bg-surface-card px-4 py-3.5 text-base text-strong shadow-card outline-none placeholder:text-mute/60 focus:border-brik"
         />
+        {erro && (
+          <p role="alert" className="mt-2 text-sm text-loss">
+            {erro}
+          </p>
+        )}
         <button
           type="submit"
-          disabled={!nome.trim()}
+          disabled={!nome.trim() || salvando}
           className={`${LABEL} mt-3 w-full rounded-2xl bg-brik py-4 text-xs font-bold text-paper transition-colors hover:bg-brik-dark disabled:opacity-40`}
         >
-          Adicionar
+          {salvando ? 'Salvando…' : 'Salvar cálculo'}
         </button>
       </form>
     </div>

@@ -1,47 +1,70 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
 import { ArrowLeftIcon } from '../components/icons.jsx'
-import { produtosExemplo, produtosVazio, STATUS } from '../data/produtosData.js'
+import { STATUS } from '../data/produtosData.js'
+import { apagarProduto, listarEstoque, mudarStatus } from '../lib/estoque.js'
 import { formatBRL } from '../lib/format.js'
+import { useFecharPainel } from '../lib/usePainel.js'
 
-// "Meus Produtos": o estoque do usuário, aberto pelo "+" da navbar. As abas
-// filtram por situação e o seletor de cada card move o produto entre elas.
-// A lista ainda não vem do Supabase (ver data/produtosData.js).
+// "Meus Produtos": o estoque do usuário (public.estoque), aberto pelo "+" da
+// navbar. As abas filtram por situação e o seletor de cada card move o produto
+// entre elas (grava na hora). O ⋮ do card edita ou exclui.
 
-// Sem fonte real de estoque, a tela abre vazia. /adicionar?exemplo preenche com
-// os produtos do mockup durante o desenvolvimento.
-function useProdutos() {
-  const { search } = useLocation()
-  const exemplo = import.meta.env.DEV && new URLSearchParams(search).has('exemplo')
-  return exemplo ? produtosExemplo() : produtosVazio()
-}
+const dataCurta = (iso) => new Date(iso).toLocaleDateString('pt-BR')
 
-function Menu() {
+// ⋮ do card: Editar leva ao formulário; Excluir pede confirmação.
+function Menu({ item, onExcluir }) {
+  const navigate = useNavigate()
+  const [aberto, setAberto] = useState(false)
+  const raizRef = useRef(null)
+  const botaoRef = useRef(null)
+  useFecharPainel(aberto, setAberto, raizRef, botaoRef)
+
   return (
-    <button
-      type="button"
-      aria-label="Opções do produto"
-      className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink/40 transition-colors hover:bg-surface-raise hover:text-ink"
-    >
-      <span aria-hidden="true" className="text-lg leading-none">
-        ⋮
-      </span>
-    </button>
+    <div ref={raizRef} className="relative -mr-1 -mt-1">
+      <button
+        ref={botaoRef}
+        type="button"
+        aria-label={`Opções de ${item.titulo}`}
+        aria-haspopup="true"
+        aria-expanded={aberto}
+        onClick={() => setAberto((a) => !a)}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink/40 transition-colors hover:bg-surface-raise hover:text-ink"
+      >
+        <span aria-hidden="true" className="text-lg leading-none">
+          ⋮
+        </span>
+      </button>
+
+      {aberto && (
+        <div className="painel-pop absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-xl bg-surface-card py-1 shadow-[0_12px_28px_-10px_rgba(0,0,0,0.35)] ring-1 ring-line [transform-origin:top_right]">
+          <button
+            type="button"
+            onClick={() => navigate(`/adicionar/editar/${item.id}`, { viewTransition: true })}
+            className="block w-full px-3.5 py-2 text-left text-sm text-ink hover:bg-surface-raise"
+          >
+            Editar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAberto(false)
+              onExcluir(item)
+            }}
+            className="block w-full px-3.5 py-2 text-left text-sm text-loss hover:bg-loss/10"
+          >
+            Excluir
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
 function Foto({ src }) {
   if (src) {
-    return (
-      <img
-        src={src}
-        alt=""
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        className="h-16 w-16 shrink-0 rounded-xl object-cover"
-      />
-    )
+    return <img src={src} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
   }
   return (
     <span
@@ -53,16 +76,18 @@ function Foto({ src }) {
   )
 }
 
-function Produto({ item, onStatus }) {
+const reais = (valor) => (valor == null ? '—' : formatBRL(valor))
+
+function Produto({ item, onStatus, onExcluir }) {
   return (
     <li className="rounded-2xl border border-line bg-surface-card p-3.5 shadow-[0_2px_8px_-4px_rgba(43,43,43,0.15)]">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium text-ink/70">{item.data}</p>
-        <Menu />
+        <p className="text-xs font-medium text-ink/70">{dataCurta(item.created_at)}</p>
+        <Menu item={item} onExcluir={onExcluir} />
       </div>
 
       <div className="mt-2 flex gap-3">
-        <Foto src={item.imagem} />
+        <Foto src={item.capa} />
 
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold">{item.titulo}</p>
@@ -70,11 +95,11 @@ function Produto({ item, onStatus }) {
           <dl className="mt-1 text-[11px] leading-relaxed">
             <div className="flex gap-1">
               <dt className="text-ink/60">Comprado por:</dt>
-              <dd className="font-medium text-brik">{formatBRL(item.compra)}</dd>
+              <dd className="font-medium text-brik">{reais(item.custo)}</dd>
             </div>
             <div className="flex gap-1">
               <dt className="text-ink/60">Valor da venda:</dt>
-              <dd className="font-medium text-brik">{formatBRL(item.venda)}</dd>
+              <dd className="font-medium text-brik">{reais(item.venda)}</dd>
             </div>
           </dl>
         </div>
@@ -108,22 +133,63 @@ function Produto({ item, onStatus }) {
 
 function MeusProdutos() {
   const navigate = useNavigate()
-  const iniciais = useProdutos()
-  const [itens, setItens] = useState(iniciais)
-  const [aba, setAba] = useState(STATUS[0].key)
+  const location = useLocation()
+  // null enquanto carrega.
+  const [itens, setItens] = useState(null)
+  const [erro, setErro] = useState('')
+  // Vindo do formulário, abre na aba do produto que acabou de ser salvo.
+  const [aba, setAba] = useState(location.state?.aba ?? STATUS[0].key)
+
+  useEffect(() => {
+    let ativo = true
+    listarEstoque()
+      .then((lista) => ativo && setItens(lista))
+      .catch((error) => {
+        console.error('Erro ao carregar o estoque:', error)
+        if (ativo) {
+          setErro('Não foi possível carregar seus produtos. Tente de novo em instantes.')
+          setItens([])
+        }
+      })
+    return () => {
+      ativo = false
+    }
+  }, [])
 
   const contagem = useMemo(() => {
     const total = {}
-    itens.forEach((item) => {
+    itens?.forEach((item) => {
       total[item.status] = (total[item.status] ?? 0) + 1
     })
     return total
   }, [itens])
 
-  const visiveis = itens.filter((item) => item.status === aba)
+  const visiveis = itens?.filter((item) => item.status === aba) ?? []
 
-  function mudarStatus(id, status) {
+  // Otimista: muda na tela e grava; se o banco recusar, volta.
+  async function trocarStatus(id, status) {
+    const antes = itens
     setItens((lista) => lista.map((item) => (item.id === id ? { ...item, status } : item)))
+    try {
+      await mudarStatus(id, status)
+    } catch (error) {
+      console.error('Erro ao mudar a situação:', error)
+      setItens(antes)
+      setErro('Não foi possível mudar a situação. Tente de novo.')
+    }
+  }
+
+  async function excluir(item) {
+    if (!window.confirm(`Excluir "${item.titulo}" do seu estoque?`)) return
+    const antes = itens
+    setItens((lista) => lista.filter((i) => i.id !== item.id))
+    try {
+      await apagarProduto(item)
+    } catch (error) {
+      console.error('Erro ao excluir o produto:', error)
+      setItens(antes)
+      setErro('Não foi possível excluir o produto. Tente de novo.')
+    }
   }
 
   return (
@@ -176,11 +242,21 @@ function MeusProdutos() {
       </div>
 
       <main className="px-4 pt-4 lg:px-8 lg:pt-6">
-        {visiveis.length === 0 ? (
+        {erro && (
+          <p role="alert" className="mb-3 rounded-lg bg-loss/10 px-3 py-2 text-sm text-loss">
+            {erro}
+          </p>
+        )}
+
+        {itens === null ? (
+          <ul className="flex flex-col gap-3 lg:grid lg:grid-cols-2" aria-busy="true" aria-label="Carregando produtos">
+            {[0, 1].map((i) => (
+              <li key={i} className="skeleton h-36 rounded-2xl" />
+            ))}
+          </ul>
+        ) : visiveis.length === 0 ? (
           <div className="flex flex-col items-center gap-1 px-6 py-12 text-center">
-            <p className="font-medium">
-              {itens.length === 0 ? 'Você ainda não tem produtos' : 'Nada nesta aba'}
-            </p>
+            <p className="font-medium">{itens.length === 0 ? 'Você ainda não tem produtos' : 'Nada nesta aba'}</p>
             <p className="text-sm text-ink/60">
               {itens.length === 0
                 ? 'Os produtos que você adicionar aparecem aqui.'
@@ -190,7 +266,7 @@ function MeusProdutos() {
         ) : (
           <ul className="flex flex-col gap-3 lg:grid lg:grid-cols-2">
             {visiveis.map((item) => (
-              <Produto key={item.id} item={item} onStatus={mudarStatus} />
+              <Produto key={item.id} item={item} onStatus={trocarStatus} onExcluir={excluir} />
             ))}
           </ul>
         )}

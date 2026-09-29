@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { NAV_ITEMS, ADD_ITEM, DESKTOP_ITEMS } from '../config/navItems.js'
-import { useAuthStore } from '../stores/useAuthStore.js'
-import { fotoDoProvedor } from '../lib/conta.js'
+import { fotoDaConta, usePerfil } from '../lib/conta.js'
 import { FotoPerfil } from './conta.jsx'
 import { PlusIcon } from './icons.jsx'
 
@@ -16,7 +15,8 @@ const ABAS = [...NAV_ITEMS.filter((item) => !item.conta), ...DESKTOP_ITEMS]
 // nome fica no title e para leitores de tela); a ativa ganha fundo e o nome se
 // abre ao lado do ícone (.nav-rotulo, no index.css).
 function TopBar() {
-  const foto = useAuthStore((state) => fotoDoProvedor(state.session?.user))
+  const { user, perfil } = usePerfil()
+  const foto = fotoDaConta(user, perfil)
 
   return (
     <header className="sticky top-0 z-50 hidden border-b border-line bg-surface-card lg:block">
@@ -78,7 +78,9 @@ function TopBar() {
           >
             <PlusIcon className="h-5 w-5" />
             {/* Até xl não cabe o texto inteiro ao lado da pílula das abas. */}
-            Adicionar<span className="max-xl:hidden"> produto</span>
+            <span>
+              Adicionar<span className="max-xl:hidden"> produto</span>
+            </span>
           </NavLink>
         </div>
       </div>

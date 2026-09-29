@@ -60,8 +60,9 @@ const router = createBrowserRouter([
         children: [
           // A conta em si. Entra pelo card "Calcular novo Brique" e sai pela seta do header.
           { path: '/calculadora/nova', element: <Calculadora /> },
-          // Formulário de entrada no estoque.
+          // Formulário do estoque: entrada e edição (pelo menu do card).
           { path: '/adicionar/novo', element: <AdicionarProduto /> },
+          { path: '/adicionar/editar/:id', element: <AdicionarProduto /> },
           // Edição do perfil. Sai pela seta do header.
           { path: '/perfil/editar', element: <EditarPerfil /> },
         ],

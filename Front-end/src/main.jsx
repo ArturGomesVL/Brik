@@ -4,6 +4,8 @@ import './index.css'
 import App from './App.jsx'
 // Começa a acompanhar a sessão do Supabase Auth já na abertura.
 import './stores/useAuthStore.js'
+// E a carregar/gravar no banco os dados do usuário que entrar.
+import './lib/sincronizarConta.js'
 import { usePreferenciasStore } from './stores/usePreferenciasStore.js'
 
 // Modo escuro (Configurações): vira data-tema no <html>, e o index.css troca os

@@ -15,7 +15,7 @@ import {
   ShieldUserIcon,
   TrashIcon,
 } from '../components/icons.jsx'
-import { fotoDoProvedor, nomeDoProvedor, usePerfil } from '../lib/conta.js'
+import { enviarAvatar, fotoDoProvedor, nomeDoProvedor, recarregarPerfil, removerAvatar, usePerfil } from '../lib/conta.js'
 import { mascaraTelefone, mascaraUsuario } from '../lib/format.js'
 import { supabase } from '../lib/supabase.js'
 import { mensagemErro } from '../stores/useAuthStore.js'
@@ -28,7 +28,8 @@ import { mensagemErro } from '../stores/useAuthStore.js'
 // data de nascimento e foto vindos do provedor: esses campos ficam travados e
 // só a localização (e o nome de usuário, que é do Brik) se altera. O banco barra
 // o resto também. O e-mail fica travado para todos: trocá-lo exige confirmar o
-// novo endereço, fluxo que ainda não existe.
+// novo endereço, fluxo que ainda não existe. A foto de quem entrou por e-mail vai
+// para o bucket "avatars" ao salvar.
 
 // 21/08/2007 enquanto o usuário digita.
 function mascaraData(valor) {
@@ -109,7 +110,10 @@ function formInicial(user, perfil, social) {
 function Formulario({ user, perfil, social }) {
   const navigate = useNavigate()
   const [form, setForm] = useState(() => formInicial(user, perfil, social))
+  // Foto nova escolhida (prévia + arquivo) e se a atual deve sair.
   const [foto, setFoto] = useState(null)
+  const [arquivoFoto, setArquivoFoto] = useState(null)
+  const [semFoto, setSemFoto] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
 
@@ -123,9 +127,25 @@ function Formulario({ user, perfil, social }) {
 
   function trocarFoto(event) {
     const arquivo = event.target.files?.[0]
-    if (arquivo) setFoto(URL.createObjectURL(arquivo))
+    if (arquivo) {
+      setFoto(URL.createObjectURL(arquivo))
+      setArquivoFoto(arquivo)
+      setSemFoto(false)
+    }
     event.target.value = ''
   }
+
+  // Tira a foto recém-escolhida ou, sem ela, marca a atual para sair ao salvar.
+  function tirarFoto() {
+    if (foto) {
+      setFoto(null)
+      setArquivoFoto(null)
+    } else {
+      setSemFoto(true)
+    }
+  }
+
+  const fotoMostrada = social ? fotoDoProvedor(user) : (foto ?? (semFoto ? null : perfil.avatar_url))
 
   async function salvar(event) {
     event.preventDefault()
@@ -156,9 +176,25 @@ function Formulario({ user, perfil, social }) {
       if (!disponivel) return falhar('Esse nome de usuário já está em uso.')
     }
 
-    // TODO: enviar a foto escolhida (contas de e-mail) quando houver bucket.
+    // Foto (só login por e-mail): a nova sobe antes, e a antiga sai depois que
+    // o perfil já aponta para a nova.
+    const fotoAntiga = perfil.avatar_url
+    if (!social && arquivoFoto) {
+      try {
+        dados.avatar_url = await enviarAvatar(user.id, arquivoFoto)
+      } catch (error) {
+        console.error('Erro ao enviar a foto:', error)
+        return falhar('Não foi possível enviar a foto. Tente outra imagem.')
+      }
+    } else if (!social && semFoto) {
+      dados.avatar_url = null
+    }
+
     const { error } = await supabase.from('profiles').update(dados).eq('id', user.id)
     if (error) return falhar(error.code === '23505' ? 'Esse nome de usuário já está em uso.' : mensagemErro(error))
+    if ('avatar_url' in dados && fotoAntiga) await removerAvatar(fotoAntiga)
+    // Perfil e TopBar leem do cache: atualiza antes de voltar.
+    await recarregarPerfil(user.id)
     voltar()
   }
 
@@ -191,7 +227,7 @@ function Formulario({ user, perfil, social }) {
           <h2 className="text-xs font-bold text-ink/50">Foto de Perfil</h2>
 
           <div className="mt-2 flex items-center gap-4">
-            <FotoPerfil src={social ? fotoDoProvedor(user) : foto} className="h-20 w-20" iconClassName="h-12 w-12" />
+            <FotoPerfil src={fotoMostrada} className="h-20 w-20" iconClassName="h-12 w-12" />
 
             {social ? (
               <p className="flex-1 border-l border-line pl-4 text-xs leading-relaxed text-ink/60">
@@ -207,8 +243,8 @@ function Formulario({ user, perfil, social }) {
 
                 <button
                   type="button"
-                  onClick={() => setFoto(null)}
-                  disabled={!foto}
+                  onClick={tirarFoto}
+                  disabled={!fotoMostrada}
                   className="flex items-center justify-center gap-1.5 rounded-lg border border-loss py-1.5 text-xs font-medium text-loss transition-colors hover:bg-loss/10 disabled:opacity-40 disabled:hover:bg-transparent"
                 >
                   <TrashIcon aria-hidden="true" className="h-4 w-4" />

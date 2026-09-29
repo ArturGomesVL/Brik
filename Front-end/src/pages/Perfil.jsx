@@ -11,7 +11,7 @@ import {
   SupportIcon,
   TrophyIcon,
 } from '../components/icons.jsx'
-import { fotoDoProvedor, nomeDoProvedor, usePerfil } from '../lib/conta.js'
+import { fotoDaConta, nomeDoProvedor, usePerfil } from '../lib/conta.js'
 import { supabase } from '../lib/supabase.js'
 
 // "Meu Perfil": conta e ajustes. Foto e nome vêm do login social, quando é o
@@ -75,7 +75,7 @@ function Perfil() {
       <main className="px-4 lg:pt-6">
         <div className="flex flex-col items-center pt-6">
           <FotoPerfil
-            src={fotoDoProvedor(user)}
+            src={fotoDaConta(user, perfil)}
             className="h-24 w-24 shadow-[0_8px_20px_-10px_rgba(43,43,43,0.6)]"
             iconClassName="h-14 w-14"
           />
@@ -115,8 +115,8 @@ function Perfil() {
         <h1 className="sr-only">Meu Perfil</h1>
 
         <ul className="mt-5 flex flex-col gap-2.5">
-          {ITENS.map((item) => (
-            <Item key={item.key} {...item} onClick={item.key === 'sair' ? sair : undefined} />
+          {ITENS.map(({ key, ...item }) => (
+            <Item key={key} {...item} onClick={key === 'sair' ? sair : undefined} />
           ))}
         </ul>
       </main>

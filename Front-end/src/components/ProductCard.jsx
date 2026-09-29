@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSalvosStore } from '../stores/useSalvosStore.js'
 import { GamepadIcon, PhoneIcon, PinIcon, StarIcon, WarningIcon } from './icons.jsx'
 
 const LEVELS = {
@@ -13,7 +14,9 @@ const brl = (value) =>
   Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 
 function ProductCard({ item }) {
-  const [saved, setSaved] = useState(false)
+  // A estrela grava em public.salvos (ver useSalvosStore).
+  const saved = useSalvosStore((state) => state.itens.some((s) => s.anuncio_url === item.url))
+  const alternarSalvo = useSalvosStore((state) => state.alternar)
   const [imageFailed, setImageFailed] = useState(false)
 
   const level = LEVELS[item.opportunity_level]
@@ -116,7 +119,7 @@ function ProductCard({ item }) {
         type="button"
         aria-label={saved ? 'Remover dos salvos' : 'Salvar oferta'}
         aria-pressed={saved}
-        onClick={() => setSaved((s) => !s)}
+        onClick={() => alternarSalvo(item)}
         className="absolute bottom-2 right-2 rounded-full p-1"
       >
         <StarIcon key={String(saved)} className={`h-6 w-6 ${saved ? 'star-pop text-accent' : 'text-line'}`} />
