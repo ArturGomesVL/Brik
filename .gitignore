@@ -4,4 +4,4 @@ node_modules/
 scraper/*.json
 scraper/__pycache__/
 .claude
-CLAUDE.md
+.CLAUDE.md
