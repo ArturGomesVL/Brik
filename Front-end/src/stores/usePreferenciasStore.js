@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { CATEGORIAS } from '../config/categorias.js'
+import { CATEGORIAS, NIVEIS } from '../config/categorias.js'
 import { TODAS } from '../config/cidades.js'
 
 // Preferências das telas do Meu Perfil. Ainda não há tabela de perfil no
@@ -23,6 +23,11 @@ export const usePreferenciasStore = create(
       // da cidade). Fica guardado para o Início reabrir na cidade de sempre.
       cidade: TODAS,
 
+      // Início: botão Filtros. Quais selos aparecem (dentro do mínimo das
+      // Configurações) e o máximo que a pessoa quer gastar (null = sem limite).
+      niveis: NIVEIS.map((n) => n.value),
+      precoMaximo: null,
+
       // Notificações: só as escolhas; os avisos ainda não são enviados.
       notificacoes: {
         oportunidades: true,
@@ -38,6 +43,8 @@ export const usePreferenciasStore = create(
       setOcultarValores: (ocultarValores) => set({ ocultarValores }),
       setNivelMinimo: (nivelMinimo) => set({ nivelMinimo }),
       setCidade: (cidade) => set({ cidade }),
+      setNiveis: (niveis) => set({ niveis }),
+      setPrecoMaximo: (precoMaximo) => set({ precoMaximo }),
       // Pelo menos uma categoria fica ligada, senão o Início ficaria sempre vazio.
       alternarCategoria: (value) =>
         set(({ categorias }) => {
