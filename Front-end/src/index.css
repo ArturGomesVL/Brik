@@ -118,6 +118,12 @@
   --color-strong: #2b2b2b;
   --color-brik: #0f4c5c;
   --color-brik-dark: #0a3540;
+  --color-mute: #6b6a64;
+  --color-line: #d9d9d6;
+  --color-surface-card: #ffffff;
+  --color-surface-raise: #efeee9;
+  --color-loss: #b3432f;
+  --color-profit: #2f6b4a;
 }
 
 body {
@@ -287,6 +293,51 @@ body {
   border-radius: inherit;
   pointer-events: none;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.22), transparent 38%);
+}
+
+/* Desktop (lg): a tela se divide. O verde vai para o painel da marca, à
+   esquerda, e o formulário fica solto sobre o marfim, à direita — sem o vidro. */
+@media (width >= 64rem) {
+  .login-bg.auth-form {
+    background: var(--color-paper);
+  }
+
+  .login-bg.auth-form :focus-visible {
+    outline-color: var(--color-brik);
+  }
+
+  .auth-form .glass-card {
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .auth-form .glass-card::before {
+    display: none;
+  }
+}
+
+/* Linhas do painel da marca: as duas camadas flutuam em sentidos opostos e
+   pulsam. Só transform e opacity — a GPU anima sem repintar a página. */
+@keyframes auth-deriva {
+  from { transform: translate3d(-4%, 3%, 0) scale(1.04); opacity: 0.5; }
+  to { transform: translate3d(4%, -3%, 0) scale(1.12); opacity: 1; }
+}
+
+.auth-linhas {
+  will-change: transform, opacity;
+  animation: auth-deriva 8s ease-in-out infinite alternate;
+}
+
+.auth-linhas-reverso {
+  animation-duration: 10s;
+  animation-direction: alternate-reverse;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-linhas { animation: none; }
 }
 
 /* Transição de tela: só a logo viaja (da lateral, na Home, para o centro do header

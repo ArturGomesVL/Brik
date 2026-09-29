@@ -11,10 +11,13 @@ import {
   MailIcon,
 } from './icons.jsx'
 
-// Peças comuns do login e do cadastro. As duas telas são cheias, sem navbar, com
-// fundo verde-petróleo — então nada aqui usa o azul royal: o botão principal
-// inverte a regra da marca (marfim com texto petróleo), os ícones dos campos são
-// petróleo sobre branco e os links são verde-água.
+// Peças comuns do login e do cadastro. As duas telas são cheias, sem navbar.
+// No celular o formulário fica num card de vidro sobre o fundo verde-petróleo —
+// então nada aqui usa o azul royal: o botão principal inverte a regra da marca
+// (marfim com texto petróleo), os ícones dos campos são petróleo sobre branco e
+// os links são verde-água. No desktop (lg) a tela se divide: o verde vira o
+// painel da marca à esquerda e o formulário fica sobre o marfim à direita, com
+// as cores normais da marca — por isso as peças trazem as variantes lg:.
 
 // provider: o nome do provedor no Supabase Auth.
 const REDES = [
@@ -23,36 +26,103 @@ const REDES = [
   { nome: 'GitHub', provider: 'github', Icon: GithubIcon },
 ]
 
+// O card é flex em coluna para que, no desktop, o título e os logins sociais
+// subam acima do formulário (lg:-order-*), como no layout dividido.
 export function AuthLayout({ children }) {
   return (
-    <div className="login-bg tema-claro relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-8">
-      {/* Manchas de luz atrás do card: sem nada contrastando por trás, o vidro
-          liso não mostra o desfoque. */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-40 -translate-y-[11rem] translate-x-8 rounded-full bg-mint/60 blur-2xl"
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 h-44 w-44 -translate-x-[12rem] translate-y-16 rounded-full bg-[#1f7a5c]/70 blur-2xl"
-      />
+    <div className="tema-claro min-h-dvh lg:grid lg:grid-cols-2">
+      <PainelMarca />
 
-      <main className="glass-card w-full max-w-[18.5rem] rounded-3xl px-5 pb-6 pt-7 text-paper">{children}</main>
+      <div className="login-bg auth-form relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-8 lg:px-10">
+        {/* Manchas de luz atrás do card: sem nada contrastando por trás, o vidro
+            liso não mostra o desfoque. */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-40 -translate-y-[11rem] translate-x-8 rounded-full bg-mint/60 blur-2xl lg:hidden"
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-1/2 h-44 w-44 -translate-x-[12rem] translate-y-16 rounded-full bg-[#1f7a5c]/70 blur-2xl lg:hidden"
+        />
+
+        <main className="glass-card flex w-full max-w-[18.5rem] flex-col rounded-3xl px-5 pb-6 pt-7 text-paper lg:max-w-sm lg:rounded-none lg:p-0 lg:text-ink">
+          {children}
+        </main>
+      </div>
     </div>
+  )
+}
+
+// Metade esquerda do desktop: logo, linhas animadas e a proposta do Brik.
+function PainelMarca() {
+  return (
+    <aside className="login-bg relative hidden min-h-dvh flex-col overflow-hidden p-10 text-paper lg:flex">
+      {/* contain isola o painel: nada do que acontece aqui repinta o formulário. */}
+      <div aria-hidden="true" className="absolute inset-0 text-mint [contain:strict]">
+        <LinhasFlutuantes direcao={1} />
+        <LinhasFlutuantes direcao={-1} />
+      </div>
+      {/* Escurece a base para a frase se ler sobre as linhas. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-brik-dark/90 via-brik-dark/20 to-transparent" />
+
+      <img src="/logoBrik.png" alt="Brik" className="relative h-9 w-auto self-start" />
+
+      <blockquote className="relative mt-auto max-w-md space-y-3">
+        <p className="text-xl leading-snug">
+          Garimpamos a OLX e mostramos só o que está abaixo do preço de mercado — para você usar ou revender com
+          lucro.
+        </p>
+        <footer className="text-sm font-medium text-mint">Brik · Garimpe ofertas</footer>
+      </blockquote>
+    </aside>
+  )
+}
+
+// 36 curvas paralelas que atravessam o painel; as duas direções se cruzam. O
+// desenho é estático: quem se mexe é o SVG inteiro (.auth-linhas, só transform
+// e opacity), que a GPU anima sem redesenhar as linhas a cada quadro.
+function LinhasFlutuantes({ direcao }) {
+  const linhas = Array.from({ length: 36 }, (_, i) => {
+    const x = (n) => n - i * 5 * direcao
+    return {
+      id: i,
+      d: `M-${x(380)} -${189 + i * 6}C-${x(380)} -${189 + i * 6} -${x(312)} ${216 - i * 6} ${x(152)} ${343 - i * 6}C${x(616)} ${470 - i * 6} ${x(684)} ${875 - i * 6} ${x(684)} ${875 - i * 6}`,
+      largura: 0.5 + i * 0.03,
+    }
+  })
+
+  return (
+    <svg
+      className={`auth-linhas pointer-events-none absolute inset-0 h-full w-full ${direcao < 0 ? 'auth-linhas-reverso' : ''}`}
+      viewBox="0 0 696 316"
+      fill="none"
+    >
+      {linhas.map((linha) => (
+        <path
+          key={linha.id}
+          d={linha.d}
+          stroke="currentColor"
+          strokeWidth={linha.largura}
+          strokeOpacity={0.1 + linha.id * 0.03}
+        />
+      ))}
+    </svg>
   )
 }
 
 export function Campo({ label, Icon, invalido = false, children, ...props }) {
   return (
     <label
-      className={`flex h-9 items-center gap-2 rounded-lg bg-white px-3 shadow-[0_4px_12px_-6px_rgba(0,0,0,0.4)] ${
-        invalido ? 'ring-2 ring-loss-soft' : 'focus-within:ring-2 focus-within:ring-mint'
+      className={`flex h-9 items-center gap-2 rounded-lg bg-white px-3 shadow-[0_4px_12px_-6px_rgba(0,0,0,0.4)] lg:h-11 lg:border lg:border-line lg:shadow-none ${
+        invalido
+          ? 'ring-2 ring-loss-soft lg:ring-loss'
+          : 'focus-within:ring-2 focus-within:ring-mint lg:focus-within:border-brik lg:focus-within:ring-brik/20'
       }`}
     >
       <span className="sr-only">{label}</span>
       <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-brik" />
       <input
-        className="min-w-0 flex-1 bg-transparent text-xs text-ink outline-none placeholder:text-ink/45"
+        className="min-w-0 flex-1 bg-transparent text-xs text-ink outline-none placeholder:text-ink/45 lg:text-sm"
         placeholder={label}
         aria-invalid={invalido || undefined}
         required
@@ -86,7 +156,7 @@ export function BotaoPrincipal({ children, ...props }) {
   return (
     <button
       type="submit"
-      className="mt-1 flex items-center justify-center gap-1.5 rounded-lg bg-paper py-2.5 text-sm font-bold text-brik shadow-[0_8px_20px_-8px_rgba(0,0,0,0.5)] transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-70 disabled:hover:bg-paper"
+      className="mt-1 flex items-center justify-center gap-1.5 rounded-lg bg-paper py-2.5 text-sm font-bold text-brik shadow-[0_8px_20px_-8px_rgba(0,0,0,0.5)] transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-70 disabled:hover:bg-paper lg:h-11 lg:bg-brik lg:py-0 lg:text-paper lg:shadow-none lg:hover:bg-brik-dark lg:disabled:hover:bg-brik"
       {...props}
     >
       {children}
@@ -98,7 +168,7 @@ export function BotaoPrincipal({ children, ...props }) {
 export function ErroForm({ children }) {
   if (!children) return null
   return (
-    <p role="alert" className="-mt-1 text-center text-[11px] text-loss-soft">
+    <p role="alert" className="-mt-1 text-center text-[11px] text-loss-soft lg:text-left lg:text-xs lg:text-loss">
       {children}
     </p>
   )
@@ -133,15 +203,19 @@ export function RedesSociais({ acao = 'Entrar', lembrar = true, destino = '/' })
     }
   }
 
+  // No celular: separador e depois os ícones redondos, abaixo do formulário. No
+  // desktop o bloco sobe para antes do formulário (lg:-order-1), os ícones viram
+  // botões de largura cheia e o separador desce para depois deles.
   return (
-    <>
-      <div className="mt-6 flex items-center gap-2.5 text-[10px] text-paper/70">
-        <span className="h-px flex-1 bg-paper/35" />
-        ou continue com
-        <span className="h-px flex-1 bg-paper/35" />
+    <div className="flex flex-col lg:-order-1 lg:mt-6">
+      <div className="mt-6 flex items-center gap-2.5 text-[10px] text-paper/70 lg:order-last lg:mt-5 lg:mb-1 lg:text-xs lg:text-mute">
+        <span className="h-px flex-1 bg-paper/35 lg:bg-line" />
+        <span className="lg:hidden">ou continue com</span>
+        <span className="hidden lg:inline">ou use seu e-mail</span>
+        <span className="h-px flex-1 bg-paper/35 lg:bg-line" />
       </div>
 
-      <ul className="mt-3 flex justify-center gap-2.5">
+      <ul className="mt-3 flex justify-center gap-2.5 lg:mt-0 lg:flex-col lg:gap-2">
         {REDES.map((rede) => (
           <li key={rede.provider}>
             <button
@@ -149,22 +223,25 @@ export function RedesSociais({ acao = 'Entrar', lembrar = true, destino = '/' })
               onClick={() => entrarCom(rede)}
               disabled={indo !== null}
               aria-label={`${acao} com ${rede.nome}`}
-              className={`flex h-9 w-9 items-center justify-center rounded-full bg-paper text-brik shadow-[0_4px_12px_-6px_rgba(0,0,0,0.5)] transition-transform hover:scale-105 disabled:hover:scale-100 ${
+              className={`flex h-9 w-9 items-center justify-center rounded-full bg-paper text-brik shadow-[0_4px_12px_-6px_rgba(0,0,0,0.5)] transition-transform hover:scale-105 disabled:hover:scale-100 lg:h-11 lg:w-full lg:gap-2.5 lg:rounded-lg lg:border lg:border-line lg:bg-surface-card lg:text-sm lg:font-medium lg:text-ink lg:shadow-none lg:transition-colors lg:hover:scale-100 lg:hover:bg-surface-raise ${
                 indo !== null && indo !== rede.provider ? 'opacity-50' : ''
               } ${indo === rede.provider ? 'animate-pulse' : ''}`}
             >
               <rede.Icon className="h-4 w-4" />
+              <span aria-hidden="true" className="hidden lg:inline">
+                Continuar com {rede.nome}
+              </span>
             </button>
           </li>
         ))}
       </ul>
 
       {erro && (
-        <p role="alert" className="mt-2.5 text-center text-[11px] text-loss-soft">
+        <p role="alert" className="mt-2.5 text-center text-[11px] text-loss-soft lg:text-xs lg:text-loss">
           {erro}
         </p>
       )}
-    </>
+    </div>
   )
 }
 
@@ -213,16 +290,16 @@ export function CodigoEmail({ email, onConfirmado, onVoltar }) {
 
   return (
     <>
-      <MailIcon aria-hidden="true" className="mx-auto h-9 w-9 text-mint" />
-      <h1 className="mt-3 text-center text-base font-bold">Confirme seu e-mail</h1>
-      <p className="mt-2 text-center text-xs leading-relaxed text-paper/80">
-        Enviamos um código para <strong className="break-all text-paper">{email}</strong>. Digite-o abaixo para ativar
+      <MailIcon aria-hidden="true" className="mx-auto h-9 w-9 text-mint lg:mx-0 lg:text-brik" />
+      <h1 className="mt-3 text-center text-base font-bold lg:text-left lg:text-2xl">Confirme seu e-mail</h1>
+      <p className="mt-2 text-center text-xs leading-relaxed text-paper/80 lg:text-left lg:text-sm lg:text-mute">
+        Enviamos um código para <strong className="break-all text-paper lg:text-ink">{email}</strong>. Digite-o abaixo para ativar
         sua conta.
       </p>
 
       <form onSubmit={confirmar} className="mt-5 flex flex-col gap-3">
         {/* O tamanho do código é configurável no Supabase (6 a 10 dígitos). */}
-        <label className="flex h-11 items-center rounded-lg bg-white px-3 shadow-[0_4px_12px_-6px_rgba(0,0,0,0.4)] focus-within:ring-2 focus-within:ring-mint">
+        <label className="flex h-11 items-center rounded-lg bg-white px-3 shadow-[0_4px_12px_-6px_rgba(0,0,0,0.4)] focus-within:ring-2 focus-within:ring-mint lg:h-12 lg:border lg:border-line lg:shadow-none lg:focus-within:border-brik lg:focus-within:ring-brik/20">
           <span className="sr-only">Código</span>
           <input
             value={codigo}
@@ -239,7 +316,7 @@ export function CodigoEmail({ email, onConfirmado, onVoltar }) {
 
         <ErroForm>{erro}</ErroForm>
         {aviso && (
-          <p role="status" className="-mt-1 text-center text-[11px] text-mint">
+          <p role="status" className="-mt-1 text-center text-[11px] text-mint lg:text-xs lg:text-profit">
             {aviso}
           </p>
         )}
@@ -247,7 +324,7 @@ export function CodigoEmail({ email, onConfirmado, onVoltar }) {
         <BotaoPrincipal disabled={enviando || codigo.length < 6}>{enviando ? 'Confirmando…' : 'Confirmar'}</BotaoPrincipal>
       </form>
 
-      <div className="mt-5 flex flex-col items-center gap-2 text-[11px] text-paper/80">
+      <div className="mt-5 flex flex-col items-center gap-2 text-[11px] text-paper/80 lg:items-start lg:text-sm lg:text-mute">
         <p>
           Não recebeu?{' '}
           {espera > 0 ? (
@@ -266,4 +343,5 @@ export function CodigoEmail({ email, onConfirmado, onVoltar }) {
   )
 }
 
-export const linkAuth = 'font-medium text-mint underline underline-offset-2 hover:text-paper'
+export const linkAuth =
+  'font-medium text-mint underline underline-offset-2 hover:text-paper lg:text-brik lg:hover:text-brik-dark'
