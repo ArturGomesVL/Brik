@@ -11,7 +11,7 @@ import {
   linkAuth,
 } from '../components/auth.jsx'
 import { CallIcon, MailIcon, PersonIcon } from '../components/icons.jsx'
-import { mascaraTelefone } from '../lib/format.js'
+import { mascaraTelefone, mascaraUsuario } from '../lib/format.js'
 import { supabase } from '../lib/supabase.js'
 import { mensagemErro } from '../stores/useAuthStore.js'
 
@@ -20,9 +20,6 @@ import { mensagemErro } from '../stores/useAuthStore.js'
 // copia para public.profiles.
 
 const VAZIO = { usuario: '', email: '', telefone: '', senha: '', confirmar: '' }
-
-// Mesma regra do check em profiles.usuario: minúsculas, números, "_" e ".".
-const mascaraUsuario = (valor) => valor.toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 20)
 
 function Cadastro() {
   const navigate = useNavigate()

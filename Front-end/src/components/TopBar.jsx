@@ -1,6 +1,9 @@
 import { NavLink } from 'react-router-dom'
 import { NAV_ITEMS, ADD_ITEM, DESKTOP_ITEMS } from '../config/navItems.js'
-import { AvatarIcon, PlusIcon } from './icons.jsx'
+import { useAuthStore } from '../stores/useAuthStore.js'
+import { fotoDoProvedor } from '../lib/conta.js'
+import { FotoPerfil } from './conta.jsx'
+import { PlusIcon } from './icons.jsx'
 
 // A conta vira a pílula com avatar à direita; as outras abas ficam em linha,
 // ao lado da logo, seguidas das telas que só existem no desktop.
@@ -11,6 +14,8 @@ const ABAS = [...NAV_ITEMS.filter((item) => !item.conta), ...DESKTOP_ITEMS]
 // some: as mesmas abas de NAV_ITEMS numa barra branca no topo, com a aba ativa
 // sublinhada, e o "+" vira o botão de destaque na ponta direita.
 function TopBar() {
+  const foto = useAuthStore((state) => fotoDoProvedor(state.session?.user))
+
   return (
     <header className="sticky top-0 z-50 hidden border-b border-line bg-surface-card lg:block">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-10 px-8">
@@ -56,12 +61,7 @@ function TopBar() {
               }`
             }
           >
-            <span
-              aria-hidden="true"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-brik-dark text-white"
-            >
-              <AvatarIcon className="h-5 w-5" />
-            </span>
+            <FotoPerfil src={foto} alt="" className="h-8 w-8" iconClassName="h-5 w-5" />
             {CONTA.label}
           </NavLink>
 

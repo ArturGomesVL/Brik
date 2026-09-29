@@ -21,6 +21,9 @@ export function mascaraTelefone(valor) {
   return `(${d.slice(0, 2)}) ${d.slice(2, meio)}-${d.slice(meio)}`
 }
 
+// Mesma regra do check em profiles.usuario: minúsculas, números, "_" e ".".
+export const mascaraUsuario = (valor) => valor.toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 20)
+
 // "1.234,56" (saída de mascaraReais) -> 1234.56
 export const reaisParaNumero = (texto) => Number(texto.replace(/\D/g, '')) / 100
 
