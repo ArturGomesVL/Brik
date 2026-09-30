@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
+import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import { ArrowLeftIcon } from '../components/icons.jsx'
 import { STATUS } from '../data/produtosData.js'
 import { apagarProduto, listarEstoque, mudarStatus } from '../lib/estoque.js'
 import { formatBRL } from '../lib/format.js'
 import { useFecharPainel } from '../lib/usePainel.js'
+import { useUsuarioId } from '../stores/useAuthStore.js'
 
 // "Meus Produtos": o estoque do usuário (public.estoque), aberto pelo "+" da
 // navbar. As abas filtram por situação e o seletor de cada card move o produto
@@ -134,6 +136,7 @@ function Produto({ item, onStatus, onExcluir }) {
 function MeusProdutos() {
   const navigate = useNavigate()
   const location = useLocation()
+  const userId = useUsuarioId()
   // null enquanto carrega.
   const [itens, setItens] = useState(null)
   const [erro, setErro] = useState('')
@@ -141,6 +144,7 @@ function MeusProdutos() {
   const [aba, setAba] = useState(location.state?.aba ?? STATUS[0].key)
 
   useEffect(() => {
+    if (!userId || userId === 'carregando') return
     let ativo = true
     listarEstoque()
       .then((lista) => ativo && setItens(lista))
@@ -154,7 +158,7 @@ function MeusProdutos() {
     return () => {
       ativo = false
     }
-  }, [])
+  }, [userId])
 
   const contagem = useMemo(() => {
     const total = {}
@@ -248,7 +252,9 @@ function MeusProdutos() {
           </p>
         )}
 
-        {itens === null ? (
+        {userId === null ? (
+          <PrecisaLogin mensagem="Entre na sua conta para ver e adicionar produtos ao seu estoque." />
+        ) : itens === null ? (
           <ul className="flex flex-col gap-3 lg:grid lg:grid-cols-2" aria-busy="true" aria-label="Carregando produtos">
             {[0, 1].map((i) => (
               <li key={i} className="skeleton h-36 rounded-2xl" />

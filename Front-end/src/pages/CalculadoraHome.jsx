@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
+import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import { CalculatorIcon, ChevronRightIcon, TrashIcon } from '../components/icons.jsx'
 import { resultado } from '../lib/calc.js'
 import { apagarCalculo, listarCalculos, paraValores } from '../lib/calculos.js'
 import { formatBRL, formatDecimal } from '../lib/format.js'
+import { useUsuarioId } from '../stores/useAuthStore.js'
 
 // Porta de entrada da calculadora, aberta pelo botão flutuante do Dashboard.
 // Fica no tema verde da Home (e não no tema claro do Dashboard) porque é uma tela
@@ -51,11 +53,13 @@ function CalculoSalvo({ calculo, onApagar }) {
 }
 
 function CalculadoraHome() {
+  const userId = useUsuarioId()
   // null enquanto carrega.
   const [calculos, setCalculos] = useState(null)
   const [erro, setErro] = useState('')
 
   useEffect(() => {
+    if (!userId || userId === 'carregando') return
     let ativo = true
     listarCalculos()
       .then((lista) => ativo && setCalculos(lista))
@@ -69,7 +73,7 @@ function CalculadoraHome() {
     return () => {
       ativo = false
     }
-  }, [])
+  }, [userId])
 
   async function apagar(calculo) {
     if (!window.confirm(`Excluir o cálculo "${calculo.nome}"?`)) return
@@ -127,7 +131,9 @@ function CalculadoraHome() {
             </p>
           )}
 
-          {calculos === null ? (
+          {userId === null ? (
+            <PrecisaLogin mensagem="Entre na sua conta para guardar e rever seus cálculos." />
+          ) : calculos === null ? (
             <ul className="mt-3 flex flex-col gap-2" aria-busy="true" aria-label="Carregando cálculos">
               {[0, 1].map((i) => (
                 <li key={i} className="skeleton h-16 rounded-2xl" />

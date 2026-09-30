@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import BrandHeader from '../components/BrandHeader.jsx'
+import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import ProductCard, { ProductCardSkeleton } from '../components/ProductCard.jsx'
 import { StarIcon } from '../components/icons.jsx'
+import { useUsuarioId } from '../stores/useAuthStore.js'
 import { useOpportunitiesStore } from '../stores/useOpportunitiesStore.js'
 import { useSalvosStore } from '../stores/useSalvosStore.js'
 
@@ -10,6 +12,7 @@ import { useSalvosStore } from '../stores/useSalvosStore.js'
 // agora (preço, selo, média); se ele saiu, mostra o retrato de quando foi salvo,
 // com um aviso.
 function Salvos() {
+  const userId = useUsuarioId()
   const salvos = useSalvosStore((state) => state.itens)
   const carregado = useSalvosStore((state) => state.carregado)
   const erro = useSalvosStore((state) => state.erro)
@@ -49,7 +52,9 @@ function Salvos() {
           </p>
         )}
 
-        {!pronto ? (
+        {userId === null ? (
+          <PrecisaLogin mensagem="Entre na sua conta para salvar ofertas e acompanhá-las por aqui." />
+        ) : !pronto ? (
           <ul className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4" aria-busy="true" aria-label="Carregando salvos">
             {[0, 1].map((i) => (
               <li key={i}>

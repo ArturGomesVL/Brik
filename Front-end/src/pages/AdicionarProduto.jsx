@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
+import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import { ArrowLeftIcon, CameraIcon } from '../components/icons.jsx'
 import { STATUS } from '../data/produtosData.js'
 import { buscarProduto, FORM_VAZIO, paraForm, salvarProduto, urlsDasFotos } from '../lib/estoque.js'
 import { mascaraReais } from '../lib/format.js'
-import { mensagemErro } from '../stores/useAuthStore.js'
+import { mensagemErro, useUsuarioId } from '../stores/useAuthStore.js'
 
 // Formulário do estoque: entrada de produto (/adicionar/novo, pelo botão
 // "Adicionar novo produto") e edição (/adicionar/editar/:id, pelo menu do card
@@ -123,11 +124,12 @@ function Fotos({ fotos, onAdd, onRemove }) {
 // Carrega o produto (na edição) antes de montar o formulário, já preenchido.
 function AdicionarProduto() {
   const { id } = useParams()
+  const userId = useUsuarioId()
   const [inicial, setInicial] = useState(id ? null : { form: FORM_VAZIO, fotos: [] })
   const [erro, setErro] = useState('')
 
   useEffect(() => {
-    if (!id) return
+    if (!id || !userId || userId === 'carregando') return
     let ativo = true
     ;(async () => {
       const produto = await buscarProduto(id)
@@ -142,12 +144,14 @@ function AdicionarProduto() {
     return () => {
       ativo = false
     }
-  }, [id])
+  }, [id, userId])
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-10 shadow-xl lg:max-w-4xl lg:pb-12 lg:shadow-none">
       <BrandHeader />
-      {inicial ? (
+      {userId === null ? (
+        <PrecisaLogin mensagem="Entre na sua conta para adicionar produtos ao seu estoque." />
+      ) : inicial ? (
         <Formulario key={id ?? 'novo'} id={id} inicial={inicial} />
       ) : (
         <p role={erro ? 'alert' : 'status'} className="px-4 py-16 text-center text-sm text-ink/60">

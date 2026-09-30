@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../stores/useAuthStore.js'
 import { useSalvosStore } from '../stores/useSalvosStore.js'
 import { GamepadIcon, PhoneIcon, PinIcon, StarIcon, WarningIcon } from './icons.jsx'
 
@@ -17,6 +19,12 @@ function ProductCard({ item }) {
   // A estrela grava em public.salvos (ver useSalvosStore).
   const saved = useSalvosStore((state) => state.itens.some((s) => s.anuncio_url === item.url))
   const alternarSalvo = useSalvosStore((state) => state.alternar)
+  const logado = useAuthStore((state) => Boolean(state.session))
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  // Sem conta não há onde salvar: a estrela leva ao login e volta para cá.
+  const clicarEstrela = () =>
+    logado ? alternarSalvo(item) : navigate('/login', { state: { de: pathname }, viewTransition: true })
   const [imageFailed, setImageFailed] = useState(false)
 
   const level = LEVELS[item.opportunity_level]
@@ -119,7 +127,7 @@ function ProductCard({ item }) {
         type="button"
         aria-label={saved ? 'Remover dos salvos' : 'Salvar oferta'}
         aria-pressed={saved}
-        onClick={() => alternarSalvo(item)}
+        onClick={clicarEstrela}
         className="absolute bottom-2 right-2 rounded-full p-1"
       >
         <StarIcon key={String(saved)} className={`h-6 w-6 ${saved ? 'star-pop text-accent' : 'text-line'}`} />

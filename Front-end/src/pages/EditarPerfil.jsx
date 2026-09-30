@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
 import { FotoPerfil } from '../components/conta.jsx'
+import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import {
   ArrowLeftIcon,
   CalendarIcon,
@@ -18,7 +19,7 @@ import {
 import { enviarAvatar, fotoDoProvedor, nomeDoProvedor, recarregarPerfil, removerAvatar, usePerfil } from '../lib/conta.js'
 import { mascaraTelefone, mascaraUsuario } from '../lib/format.js'
 import { supabase } from '../lib/supabase.js'
-import { mensagemErro } from '../stores/useAuthStore.js'
+import { mensagemErro, useUsuarioId } from '../stores/useAuthStore.js'
 
 // "Editar perfil", aberto pelo botão do Meu Perfil. Tela cheia, sem navbar (a
 // rota fica fora do Layout). No desktop a foto fica numa coluna à esquerda e os
@@ -91,7 +92,16 @@ function Secao({ Icon, titulo }) {
 // se outra conta entrar.
 function EditarPerfil() {
   const conta = usePerfil()
-  if (!conta.perfil) return null
+  const userId = useUsuarioId()
+  if (userId === null) {
+    return (
+      <div className="mx-auto min-h-screen w-full max-w-md bg-surface shadow-xl lg:max-w-4xl lg:shadow-none">
+        <BrandHeader voltarPara="/perfil" />
+        <PrecisaLogin mensagem="Entre na sua conta para editar seu perfil." />
+      </div>
+    )
+  }
+  if (userId === 'carregando' || !conta.perfil) return null
   return <Formulario key={conta.user?.id} {...conta} />
 }
 

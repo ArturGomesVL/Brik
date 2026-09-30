@@ -4,6 +4,7 @@ import { ArrowLeftIcon } from '../components/icons.jsx'
 import { Card } from '../components/dashboard/ui.jsx'
 import { EMPTY, FIELDS, press, resultado } from '../lib/calc.js'
 import { paraValores, salvarCalculo } from '../lib/calculos.js'
+import { useAuthStore } from '../stores/useAuthStore.js'
 import { formatBRL, formatDecimal, formatInt } from '../lib/format.js'
 
 // Calculadora de revenda: o usuário preenche os custos e o preço de venda com o
@@ -99,6 +100,11 @@ function Calculadora() {
   async function adicionar(event) {
     event.preventDefault()
     if (!nome.trim() || salvando) return
+    // A conta funciona sem login; guardar precisa de uma conta.
+    if (!useAuthStore.getState().session) {
+      setErroSalvar('Entre na sua conta para salvar cálculos.')
+      return
+    }
     setSalvando(true)
     setErroSalvar('')
     try {

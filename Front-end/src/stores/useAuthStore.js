@@ -11,6 +11,11 @@ export const useAuthStore = create(() => ({
   quizRespondido: null,
 }))
 
+// Para as telas com dados da conta: 'carregando' enquanto a sessão guardada é
+// lida; depois o id do usuário, ou null se ninguém entrou (ver PrecisaLogin).
+export const useUsuarioId = () =>
+  useAuthStore((state) => (state.carregando ? 'carregando' : (state.session?.user.id ?? null)))
+
 async function consultarQuiz(userId) {
   const { data, error } = await supabase
     .from('preferencias')
