@@ -353,11 +353,11 @@ body {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-/* Estrela de oferta salva: o mesmo vidro, tingido de azul royal. */
+/* Estrela de oferta salva: o mesmo vidro, tingido do petróleo da marca. */
 .glass-selo-ativo {
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.04) 45%, rgba(255, 255, 255, 0.14)),
-    color-mix(in srgb, var(--color-accent) 82%, transparent);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0.12)),
+    color-mix(in srgb, var(--color-brik) 88%, transparent);
 }
 
 /* Clique na estrela do card: ao salvar, uma onda de luz sai do botão (junto do
