@@ -29,7 +29,7 @@ import { mensagemErro } from '../stores/useAuthStore.js'
 // só a localização (e o nome de usuário, que é do Brik) se altera. O banco barra
 // o resto também. O e-mail fica travado para todos: trocá-lo exige confirmar o
 // novo endereço, fluxo que ainda não existe. A foto de quem entrou por e-mail vai
-// para o bucket "avatars" ao salvar.
+// para o Cloudflare R2 ao salvar.
 
 // 21/08/2007 enquanto o usuário digita.
 function mascaraData(valor) {
@@ -181,7 +181,7 @@ function Formulario({ user, perfil, social }) {
     const fotoAntiga = perfil.avatar_url
     if (!social && arquivoFoto) {
       try {
-        dados.avatar_url = await enviarAvatar(user.id, arquivoFoto)
+        dados.avatar_url = await enviarAvatar(arquivoFoto)
       } catch (error) {
         console.error('Erro ao enviar a foto:', error)
         return falhar('Não foi possível enviar a foto. Tente outra imagem.')

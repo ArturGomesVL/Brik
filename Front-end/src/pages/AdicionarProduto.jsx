@@ -5,11 +5,11 @@ import { ArrowLeftIcon, CameraIcon } from '../components/icons.jsx'
 import { STATUS } from '../data/produtosData.js'
 import { buscarProduto, FORM_VAZIO, paraForm, salvarProduto, urlsDasFotos } from '../lib/estoque.js'
 import { mascaraReais } from '../lib/format.js'
-import { mensagemErro, useAuthStore } from '../stores/useAuthStore.js'
+import { mensagemErro } from '../stores/useAuthStore.js'
 
 // Formulário do estoque: entrada de produto (/adicionar/novo, pelo botão
 // "Adicionar novo produto") e edição (/adicionar/editar/:id, pelo menu do card
-// em Meus Produtos). Grava em public.estoque e as fotos no bucket "estoque".
+// em Meus Produtos). Grava em public.estoque e as fotos no Cloudflare R2.
 // Tela cheia, sem navbar: é uma tarefa com começo e fim. No desktop as fotos
 // ficam à esquerda e os campos à direita.
 
@@ -160,7 +160,6 @@ function AdicionarProduto() {
 
 function Formulario({ id, inicial }) {
   const navigate = useNavigate()
-  const userId = useAuthStore((state) => state.session?.user.id)
   const [form, setForm] = useState(inicial.form)
   // { chave, url, caminho } das já guardadas; { chave, url, arquivo } das novas.
   const [fotos, setFotos] = useState(inicial.fotos)
@@ -208,7 +207,6 @@ function Formulario({ id, inicial }) {
     try {
       await salvarProduto({
         id,
-        userId,
         form,
         fotos: fotos.map((foto) => foto.caminho ?? foto.arquivo),
         fotosAntes: inicial.fotos.map((foto) => foto.caminho),

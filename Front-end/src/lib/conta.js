@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { DiscordIcon, GithubIcon, GoogleIcon } from '../components/icons.jsx'
 import { useAuthStore } from '../stores/useAuthStore.js'
 import { comprimirImagem } from './imagem.js'
+import { apagarImagens, enviarImagens, URL_PUBLICA_AVATARS } from './r2.js'
 import { supabase } from './supabase.js'
 
 // Dados da conta logada. Quem entrou por login social (Google, Discord...) tem
@@ -43,7 +44,7 @@ export function fotoDoProvedor(user) {
 }
 
 // Foto a mostrar: a do provedor no login social; a enviada em Editar perfil
-// (profiles.avatar_url, bucket "avatars") no login por e-mail.
+// (profiles.avatar_url, bucket público de avatares no R2) no login por e-mail.
 export function fotoDaConta(user, perfil) {
   return contaSocial(user) ? fotoDoProvedor(user) : (perfil?.avatar_url ?? null)
 }
@@ -84,21 +85,14 @@ export function usePerfil() {
 // Foto de perfil (login por e-mail): sobe reduzida para <user_id>/<arquivo>.jpg
 // e devolve a URL pública. A anterior só é apagada (removerAvatar) depois que o
 // perfil já aponta para a nova, para não ficar um link quebrado se algo falhar.
-const BUCKET_AVATAR = 'avatars'
-const caminhoNoBucket = (url) => url?.split(`/object/public/${BUCKET_AVATAR}/`)[1] ?? null
-
-export async function enviarAvatar(userId, arquivo) {
-  const blob = await comprimirImagem(arquivo, 512)
-  const caminho = `${userId}/${crypto.randomUUID()}.jpg`
-  const { error } = await supabase.storage
-    .from(BUCKET_AVATAR)
-    .upload(caminho, blob, { contentType: blob.type || 'image/jpeg' })
-  if (error) throw error
-  return supabase.storage.from(BUCKET_AVATAR).getPublicUrl(caminho).data.publicUrl
+export async function enviarAvatar(arquivo) {
+  const imagem = await comprimirImagem(arquivo, 512)
+  const { urls } = await enviarImagens('avatars', [imagem])
+  return urls[0]
 }
 
 // Apaga do bucket a foto dessa URL (se for dele; a do provedor fica).
 export async function removerAvatar(url) {
-  const caminho = caminhoNoBucket(url)
-  if (caminho) await supabase.storage.from(BUCKET_AVATAR).remove([caminho])
+  const prefixo = `${URL_PUBLICA_AVATARS}/`
+  if (url?.startsWith(prefixo)) await apagarImagens('avatars', [url.slice(prefixo.length)])
 }
