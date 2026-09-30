@@ -1,44 +1,42 @@
-name: Raspagem Brik
+name: Raspagem completa
 
 on:
   schedule:
-    # 07h–21h em Recife (UTC-3), de 2 em 2 horas = 10h–00h UTC
-    - cron: '0 0,10,12,14,16,18,20,22 * * *'
+    # 07h17 em Recife (UTC-3) = 10h17 UTC, uma vez por dia (minuto 17 e não 00:
+    # agendamento na hora cheia é o que o GitHub mais atrasa ou descarta)
+    - cron: '17 10 * * *'
   workflow_dispatch:
+    inputs:
+      ciclo_completo:
+        description: 'Ciclo completo: todos os produtos e páginas, com strikes (ignora os dois campos abaixo)'
+        type: boolean
+        default: false
+      buscas:
+        description: 'Produtos, separados por espaço (iphone ps5 ps4 ps3 ps2 xbox)'
+        type: string
+        default: 'xbox'
+      paginas:
+        description: 'Máximo de páginas por produto, contando da última (raspagem parcial, sem strikes)'
+        type: string
+        default: '1'
+      dry_run:
+        description: 'Dry-run: só raspa, sem Haiku e sem gravar no banco'
+        type: boolean
+        default: false
 
-# Duas execuções simultâneas poderiam aplicar strikes em dobro.
+# Mesmo grupo da raspagem das primeiras páginas: as duas nunca rodam ao mesmo
+# tempo (strikes em dobro / gravações concorrentes); a que chega depois espera.
 concurrency:
   group: raspagem-brik
   cancel-in-progress: false
 
 jobs:
-  scrape:
-    runs-on: ubuntu-latest
-    timeout-minutes: 110
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-
-      - name: Instalar dependências do scraper (Python)
-        run: pip install -r scraper/requirements.txt
-
-      - name: Instalar dependências do worker (Node)
-        working-directory: worker
-        run: npm install
-
-      - name: Rodar worker
-        working-directory: worker
-        run: node worker.js --headless
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          PYTHON_EXECUTABLE: python
-          PYTHON_SCRIPT_PATH: ${{ github.workspace }}/scraper/app.py
+  raspagem:
+    uses: ./.github/workflows/raspagem-base.yml
+    secrets: inherit
+    with:
+      completo: ${{ github.event_name == 'schedule' || inputs.ciclo_completo == true }}
+      buscas: ${{ inputs.buscas }}
+      paginas: ${{ inputs.paginas }}
+      dry_run: ${{ inputs.dry_run == true }}
+      timeout: 180

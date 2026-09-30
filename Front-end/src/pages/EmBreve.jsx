@@ -1,0 +1,10 @@
+function EmBreve({ title }) {
+  return (
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-2 bg-surface px-6 pb-28 text-center shadow-xl lg:max-w-none lg:pb-0 lg:shadow-none">
+      <h1 className="text-xl font-bold text-brik">{title}</h1>
+      <p className="text-sm text-ink/60">Esta tela ainda está em construção.</p>
+    </div>
+  )
+}
+
+export default EmBreve

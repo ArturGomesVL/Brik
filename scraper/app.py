@@ -35,6 +35,7 @@ ESTADO       = 'pe'        # sigla do estado
 CATEGORIA    = 'celulares' # 'celulares' ou 'games'
 CONDICAO     = 'usado'     # 'novo', 'usado' ou 'defeito'
 PAGINAS      = 100    # quantas páginas raspar (None = só a 1ª)
+PRIMEIRAS    = False  # True: as PAGINAS primeiras (mais recentes) em vez das últimas
 
 # Pasta onde cada JSON de execução é salvo.
 # Usa o diretório do próprio script para funcionar corretamente
@@ -209,6 +210,15 @@ class SemMaisResultados(Exception):
 
 
 
+def titulo_pagina(driver) -> str:
+    """Título da página aberta, pro log de falha: 'Attention Required! | Cloudflare'
+    é bloqueio, 'Just a moment...' é desafio do Cloudflare, vazio é página que não carregou."""
+    try:
+        return f'título da página: "{driver.title}"'
+    except Exception:
+        return 'título da página indisponível'
+
+
 def descobrir_ultima_pagina(driver) -> Optional[int]:
     """
     Descobre o número da última página disponível na busca do OLX.
@@ -257,7 +267,7 @@ def descobrir_ultima_pagina(driver) -> Optional[int]:
             return ultima
 
     except Exception as e:
-        logger.warning(f'Não foi possível descobrir a última página: {e}')
+        logger.warning(f'Não foi possível descobrir a última página ({titulo_pagina(driver)}): {e}')
     return None
 
 
@@ -309,7 +319,8 @@ def raspar_pagina_com_retry(driver, url: str, condicao: str) -> Optional[list[di
         except SemMaisResultados:
             raise
         except TimeoutException:
-            logger.error(f'Timeout ao carregar página (tentativa {tentativa}/{total_tentativas}): {url}')
+            logger.error(f'Timeout ao carregar página (tentativa {tentativa}/{total_tentativas}, '
+                         f'{titulo_pagina(driver)}): {url}')
         except WebDriverException as e:
             logger.error(f'Erro do WebDriver (tentativa {tentativa}/{total_tentativas}): {e}')
         except Exception as e:
@@ -376,14 +387,20 @@ def main():
         logger.warning('Não foi possível detectar a última página via paginação. Usando página 1 como ponto de partida.')
         ultima_pagina = 1
 
-    # Respeita o limite configurado em PAGINAS
-    pagina_inicio = ultima_pagina
-    pagina_fim    = max(1, ultima_pagina - paginas_limite + 1)
+    # Respeita o limite configurado em PAGINAS. As duas janelas são percorridas
+    # de trás pra frente (ver o loop abaixo).
+    if PRIMEIRAS:
+        pagina_inicio = min(paginas_limite, ultima_pagina)
+        pagina_fim    = 1
+    else:
+        pagina_inicio = ultima_pagina
+        pagina_fim    = max(1, ultima_pagina - paginas_limite + 1)
     paginas_total = pagina_inicio - pagina_fim + 1
 
     logger.info(
         f'Iniciando: busca="{BUSCA}" categoria={CATEGORIA} condicao={CONDICAO} '
         f'ultima_pagina={ultima_pagina} raspando {paginas_total} pagina(s) '
+        f'{"primeiras " if PRIMEIRAS else ""}'
         f'({pagina_inicio} -> {pagina_fim})'
     )
 
@@ -450,6 +467,81 @@ def main():
     print(f'RESULTADO_JSON={caminho_arquivo}', flush=True)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# PÁGINAS DE ANÚNCIO (--anuncios)
+# ──────────────────────────────────────────────────────────────────────────────
+# O worker abre páginas de anúncio pra ler a descrição (verificação de defeito) e
+# pra confirmar se o anúncio saiu do ar antes de apagar por strike. O curl dele toma
+# 403 do Cloudflare nessas páginas (no Actions, sempre); o Chrome da raspagem passa.
+# Aqui só devolvemos os blocos JSON-LD crus (schema.org/Product, onde fica a
+# descrição) e o título da página; quem interpreta é o worker.
+TENTATIVAS_ANUNCIO = 2
+
+
+def _pagina_anuncio_pronta(driver) -> bool:
+    """A página do anúncio terminou de carregar em algum dos três desfechos:
+    JSON-LD presente, anúncio fora do ar ou bloqueio do Cloudflare."""
+    if driver.find_elements(By.XPATH, "//script[@type='application/ld+json']"):
+        return True
+    titulo = driver.title.lower()
+    return 'não encontrado' in titulo or 'attention required' in titulo
+
+
+def ler_json_ld(driver, link: str) -> tuple[list[str], str]:
+    """Abre o anúncio e devolve (blocos JSON-LD, título da página). Sem JSON-LD
+    (bloqueio, anúncio fora do ar, timeout) devolve lista vazia."""
+    titulo = ''
+    for tentativa in range(1, TENTATIVAS_ANUNCIO + 1):
+        if tentativa > 1:
+            sleep(random.uniform(4, 8))
+        try:
+            # O Cloudflare deixa passar a 1ª página de anúncio da sessão e barra as
+            # seguintes ("Attention Required!"), mesmo com 15s entre elas; limpando
+            # os cookies antes de cada anúncio, todas passam.
+            driver.delete_all_cookies()
+            driver.execute_cdp_cmd('Network.clearBrowserCookies', {})
+            driver.get(link)
+            WebDriverWait(driver, 15).until(_pagina_anuncio_pronta)
+            titulo = driver.title
+            blocos = driver.execute_script(
+                "return Array.from(document.querySelectorAll('script[type=\"application/ld+json\"]'), s => s.textContent)"
+            )
+            if blocos:
+                return blocos, titulo
+            if 'não encontrado' in titulo.lower():
+                return [], titulo  # anúncio fora do ar: repetir não adianta
+        except (TimeoutException, WebDriverException):
+            try:
+                titulo = driver.title
+            except Exception:
+                pass
+    return [], titulo
+
+
+def ler_anuncios(caminho_entrada: str):
+    """Lê a lista de links (JSON) em caminho_entrada e grava, ao lado dela, um
+    <entrada>-resultado.json com {link, titulo_pagina, json_ld} por anúncio."""
+    links = json.loads(Path(caminho_entrada).read_text(encoding='utf-8'))
+    driver = criar_driver(headless=HEADLESS, usar_proxy=USAR_PROXY)
+    resultados = []
+    try:
+        for i, link in enumerate(links, start=1):
+            blocos, titulo = ler_json_ld(driver, link)
+            logger.info(f'[anúncio {i}/{len(links)}] {"OK" if blocos else "sem JSON-LD"} '
+                        f'(título da página: "{titulo}") {link}')
+            resultados.append({'link': link, 'titulo_pagina': titulo, 'json_ld': blocos})
+            if i < len(links):
+                sleep(random.uniform(1, 3))
+    finally:
+        driver.quit()
+
+    entrada = Path(caminho_entrada)
+    caminho_saida = str(entrada.with_name(f'{entrada.stem}-resultado.json'))
+    with open(caminho_saida, 'w', encoding='utf-8') as f:
+        json.dump({'resultados': resultados}, f, ensure_ascii=False)
+    print(f'RESULTADO_JSON={caminho_saida}', flush=True)
+
+
 def ler_argumentos() -> argparse.Namespace:
     """Permite ao worker escolher o produto de cada execução. Sem argumentos, usa as constantes do topo."""
     p = argparse.ArgumentParser(description='Raspador do OLX (Selenium)')
@@ -458,7 +550,12 @@ def ler_argumentos() -> argparse.Namespace:
     p.add_argument('--categoria', choices=list(CATEGORIAS), help='categoria do OLX')
     p.add_argument('--condicao', choices=list(CONDICOES), help='condição do produto')
     p.add_argument('--paginas', type=int, help='quantas páginas raspar')
+    p.add_argument('--primeiras', action='store_true',
+                   help='raspa as --paginas PRIMEIRAS páginas (mais recentes) em vez das últimas')
     p.add_argument('--headless', action='store_true', help='roda sem abrir janela')
+    p.add_argument('--anuncios', metavar='ARQUIVO',
+                   help='em vez de raspar a busca, lê o JSON-LD dos anúncios listados no ARQUIVO '
+                        '(JSON com a lista de links) e grava <ARQUIVO>-resultado.json')
     return p.parse_args()
 
 
@@ -474,6 +571,11 @@ if __name__ == '__main__':
         CONDICAO = _args.condicao
     if _args.paginas is not None:
         PAGINAS = _args.paginas
+    if _args.primeiras:
+        PRIMEIRAS = True
     if _args.headless:
         HEADLESS = True
-    main()
+    if _args.anuncios:
+        ler_anuncios(_args.anuncios)
+    else:
+        main()

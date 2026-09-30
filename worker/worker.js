@@ -13,7 +13,7 @@
 // Rodar manualmente por enquanto: node worker.js
 require('dotenv').config(); console.log('SUPABASE_URL:', JSON.stringify(process.env.SUPABASE_URL));
 const { createClient } = require('@supabase/supabase-js');
-const { execFile, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -33,9 +33,9 @@ const {
 } = require('./produtos');
 const { defeitoNoTitulo, mantemDefeituosos, planHistory, capOpportunityLevelDefeituoso } = require('./defeito');
 const {
-    LUCRO_MIN_VERIFICACAO,
     profitPct,
-    extractDescription,
+    descriptionFromJsonLd,
+    adPageStatus,
     VERIFICACAO_SYSTEM_PROMPT,
     buildVerificationMessage,
     parseVerdicts,
@@ -79,25 +79,21 @@ const DESCONTO_MAX_PLAUSIVEL = 0.85; // > 85% abaixo da mediana do segmento → 
 const ACIMA_MAX_PLAUSIVEL = 2.5;     // > 2,5x a mediana do segmento → descarta
 
 // Antes de apagar um anúncio por 3 strikes, o worker confirma direto no
-// OLX se ele saiu mesmo do ar (a raspagem perde anúncio ativo por
-// re-ranqueamento/hiccup, não só por venda). STRIKE_VERIFY=false volta ao
-// comportamento antigo (apaga com 3 strikes sem confirmar).
+// OLX (abrindo a página no Chrome do scraper) se ele saiu mesmo do ar: a raspagem
+// perde anúncio ativo por re-ranqueamento/hiccup, não só por venda.
+// STRIKE_VERIFY=false volta ao comportamento antigo (apaga com 3 strikes sem confirmar).
 const VERIFY_STRIKES_ON_OLX = process.env.STRIKE_VERIFY !== 'false';
-const OLX_PROBE_CONCURRENCY = 3;
-const OLX_PROBE_TIMEOUT_MS = 15000;
-// Máximo de verificações no OLX por ciclo; o excedente é verificado nos
-// ciclos seguintes (raspagem quebrada é barrada pela trava de cobertura).
+// Máximo de verificações no OLX por ciclo (~7s cada); o excedente é verificado
+// nos ciclos seguintes (raspagem quebrada é barrada pela trava de cobertura).
 const OLX_PROBE_MAX = 250;
-const BROWSER_UA =
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-// Anúncio com lucro >= LUCRO_MIN_VERIFICACAO% tem a descrição lida no OLX e
-// julgada pelo Haiku; com defeito (ou algo que não é o produto), é removido.
-// VERIFY_DESCRIPTIONS=false desliga a etapa.
+// Todo anúncio do feed (opportunity_level diferente de 'nenhuma') tem a descrição
+// lida no OLX e julgada pelo Haiku; com defeito (ou algo que não é o produto), é
+// removido — ou, no iPhone, marcado com defeito. VERIFY_DESCRIPTIONS=false desliga.
 const VERIFY_DESCRIPTIONS = process.env.VERIFY_DESCRIPTIONS !== 'false';
 const DESCRIPTION_BATCH_SIZE = 10;
 // Máximo de anúncios verificados por ciclo; o excedente fica pendente
-// (verified_at nulo) e é pego nos ciclos seguintes, maior lucro primeiro.
+// (verified_at nulo) e é pego nos ciclos seguintes, maior lucro primeiro (~7s cada).
 const DESCRIPTION_MAX_PER_CYCLE = 60;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
@@ -123,14 +119,14 @@ const CATEGORIA_OLX_PARA_INTERNA = {
 // "scrapping python\app.py") funciona sem escaping manual e sem risco de
 // injeção de comando.
 // ------------------------------------------------------------------
-async function runPythonScraper(produto, { headless = false } = {}) {
+async function runPythonScript(scriptArgs) {
     if (!PYTHON_SCRIPT_PATH) {
         throw new Error('PYTHON_SCRIPT_PATH não está definido. Configure o caminho do app.py no .env.');
     }
 
     const scriptDir = path.dirname(PYTHON_SCRIPT_PATH);
     const startedAt = Date.now();
-    const args = [PYTHON_SCRIPT_PATH, ...scraperArgs(produto, { headless })];
+    const args = [PYTHON_SCRIPT_PATH, ...scriptArgs];
 
     console.log(`[scraper] Iniciando: ${PYTHON_EXECUTABLE} ${args.map((a) => `"${a}"`).join(' ')}`);
 
@@ -196,6 +192,11 @@ async function runPythonScraper(produto, { headless = false } = {}) {
     return payload;
 }
 
+// Raspagem de UM produto (busca no OLX).
+async function runPythonScraper(produto, { headless = false } = {}) {
+    return runPythonScript(scraperArgs(produto, { headless }));
+}
+
 // O app.py nomeia o arquivo de saída como busca-estado-condicao-timestamp.json
 // — em vez de replicar esse formato aqui (e desincronizar se o script
 // mudar o padrão), pegamos o .json mais recente na pasta de saída criado
@@ -231,7 +232,7 @@ function bestImageFromSrcset(srcset) {
 // título cria uma linha duplicada em anuncios_ativos e a linha antiga
 // fica com o preço/strikes congelados pra sempre (a antiga nunca é
 // vista de novo com essa URL, então nunca é atualizada nem apagada —
-// o probeOlxAd do passo de strikes confirma que o ID está ativo e só
+// a confirmação no OLX do passo de strikes vê que o ID está ativo e só
 // zera o strike, sem corrigir o preço). Mesma lógica que já existia no
 // pageFunction do Apify, agora aplicada aqui porque o Apify foi
 // removido e o scraper Python (app.py) não normaliza o href.
@@ -328,6 +329,12 @@ function mapAndValidateScraperOutput(payload) {
         anuncios.map((raw) => (raw.Link ? normalizeUrl(raw.Link) : null)).filter(Boolean)
     )];
 
+    // Link completo de cada anúncio (o banco só guarda o canônico /vi/<id>): o
+    // Cloudflare do OLX deixa ler a descrição por ele bem mais que pelo /vi/<id>.
+    const linksOlx = new Map(
+        anuncios.filter((raw) => raw.Link).map((raw) => [normalizeUrl(raw.Link), raw.Link])
+    );
+
     if (defeitoUrls.length > 0) {
         console.warn(`[scraper] ${defeitoUrls.length} anúncio(s) descartado(s): título diz que o produto tem defeito.`);
     }
@@ -335,7 +342,7 @@ function mapAndValidateScraperOutput(payload) {
         console.log(`[scraper] ${comDefeitoMantidos} anúncio(s) com defeito no título mantido(s), marcados com aviso (${category}).`);
     }
 
-    return { category, items, seenUrls, defeitoUrls, condition: conditionFromScrape(payload.condicao) };
+    return { category, items, seenUrls, defeitoUrls, linksOlx, condition: conditionFromScrape(payload.condicao) };
 }
 
 // ------------------------------------------------------------------
@@ -870,49 +877,15 @@ function extractAdId(url) {
     return m ? m[1] : null;
 }
 
-// GET via curl (não via fetch): o Cloudflare do OLX bloqueia o
-// fingerprint TLS do undici/fetch com 403, mas deixa o curl passar.
-// Retorna o status HTTP, ou null se o curl falhou/não existe.
-function curlStatus(url) {
-    return new Promise((resolve) => {
-        execFile(
-            'curl',
-            [
-                '-s', '-o', os.devNull, '-w', '%{http_code}',
-                '-A', BROWSER_UA,
-                '-L', '--max-time', String(Math.ceil(OLX_PROBE_TIMEOUT_MS / 1000)),
-                url,
-            ],
-            { timeout: OLX_PROBE_TIMEOUT_MS + 5000, windowsHide: true },
-            (err, stdout) => {
-                if (err) return resolve(null);
-                const code = parseInt(String(stdout).trim(), 10);
-                resolve(Number.isFinite(code) ? code : null);
-            }
-        );
-    });
-}
-
-// Confirma direto no OLX se o anúncio ainda está no ar. A forma curta
-// /vi/<id> responde bem mesmo de IP de datacenter:
-//   200      -> anúncio ativo            => 'alive'  (não dar strike)
-//   410/404  -> "Anúncio não encontrado" => 'gone'   (pode apagar)
-//   null / 403 / 5xx / sem id            => 'inconclusive' (adia)
-async function probeOlxAd(url) {
-    const id = extractAdId(url);
-    if (!id) return 'inconclusive';
-    const status = await curlStatus(`https://www.olx.com.br/vi/${id}`);
-    if (status === 200) return 'alive';
-    if (status === 410 || status === 404) return 'gone';
-    return 'inconclusive';
-}
-
-async function probeMany(rows) {
+// Confirma no OLX, pelo navegador, se os anúncios ainda estão no ar (ver
+// adPageStatus). Devolve Map url -> 'alive' | 'gone' | 'inconclusive'.
+async function probeManyViaBrowser(rows, { headless = false } = {}) {
+    const alvos = rows.map((row) => ({ url: row.url, id: extractAdId(row.url) }));
+    const links = alvos.filter((a) => a.id).map((a) => `https://www.olx.com.br/vi/${a.id}`);
+    const paginas = await readAdPagesViaBrowser(links, { headless });
     const verdicts = new Map();
-    for (let i = 0; i < rows.length; i += OLX_PROBE_CONCURRENCY) {
-        const batch = rows.slice(i, i + OLX_PROBE_CONCURRENCY);
-        const results = await Promise.all(batch.map((row) => probeOlxAd(row.url)));
-        batch.forEach((row, j) => verdicts.set(row.url, results[j]));
+    for (const { url, id } of alvos) {
+        verdicts.set(url, id ? adPageStatus(paginas.get(`https://www.olx.com.br/vi/${id}`), id) : 'inconclusive');
     }
     return verdicts;
 }
@@ -954,7 +927,7 @@ async function deleteActiveByUrl(urls, chunkSize = 40) {
     }
 }
 
-async function handleStrikes(category, currentUrls) {
+async function handleStrikes(category, currentUrls, { headless = false } = {}) {
     const activeList = await fetchAllActiveRows(category);
 
     const currentSet = new Set(currentUrls);
@@ -1019,7 +992,7 @@ async function handleStrikes(category, currentUrls) {
             `   Verificando ${toProbe.length} candidato(s) a exclusão direto no OLX` +
             (adiados > 0 ? ` (${adiados} ficam pro próximo ciclo)` : '') + '...'
         );
-        const verdicts = await probeMany(toProbe);
+        const verdicts = await probeManyViaBrowser(toProbe, { headless });
         for (const row of toProbe) {
             const verdict = verdicts.get(row.url);
             if (verdict === 'gone') {
@@ -1098,8 +1071,8 @@ function printTop(counts, limit) {
 }
 
 // Um anúncio que já estava no banco e agora é rejeitado (regra nova, ou
-// reclassificação) sairia da raspagem "válida" e acabaria zumbi — o
-// probeOlxAd do passo de strikes o confirmaria ativo e zeraria o strike
+// reclassificação) sairia da raspagem "válida" e acabaria zumbi — a
+// confirmação no OLX do passo de strikes o veria ativo e zeraria o strike
 // pra sempre. Remove direto.
 async function removeRejectedFromActive(urls, chunkSize = 40) {
     const removed = [];
@@ -1138,44 +1111,65 @@ async function dropDefectiveFromDatabase(urls, chunkSize = 40) {
 }
 
 // ------------------------------------------------------------------
-// Verificação da descrição — anúncios com lucro >= LUCRO_MIN_VERIFICACAO% e
-// ainda não verificados: abre o anúncio no OLX, lê a descrição e o Haiku diz se
-// há defeito ou algo que não condiz com o produto. Reprovado sai do banco (e
-// leva o histórico de preço); aprovado ganha verified_at. O que não deu pra
-// verificar (OLX bloqueou, Haiku falhou) segue pendente pro próximo ciclo.
+// Verificação da descrição — anúncios do feed ainda não verificados: abre o
+// anúncio no OLX, lê a descrição e o Haiku diz se há defeito ou algo que não
+// condiz com o produto. Reprovado sai do banco (e leva o histórico de preço);
+// aprovado ganha verified_at. O que não deu pra verificar (OLX bloqueou, Haiku
+// falhou) segue pendente pro próximo ciclo.
 // ------------------------------------------------------------------
 
-// Baixa a página do anúncio via curl (mesmo motivo do curlStatus: o Cloudflare
-// do OLX barra o fetch). Devolve { status, body }, ou null se o curl falhou.
-function curlPage(url) {
-    return new Promise((resolve) => {
-        execFile(
-            'curl',
-            ['-s', '-L', '-A', BROWSER_UA, '--max-time', String(Math.ceil(OLX_PROBE_TIMEOUT_MS / 1000)),
-                '-w', '\n__STATUS__%{http_code}', url],
-            { timeout: OLX_PROBE_TIMEOUT_MS + 5000, windowsHide: true, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' },
-            (err, stdout) => {
-                if (err) return resolve(null);
-                const m = /\n__STATUS__(\d{3})$/.exec(stdout);
-                if (!m) return resolve(null);
-                resolve({ status: Number(m[1]), body: stdout.slice(0, m.index) });
-            }
-        );
-    });
+// Abre páginas de anúncio no Chrome do scraper (app.py --anuncios). O curl não
+// serve: o Cloudflare do OLX barra as páginas de anúncio com 403 (no Actions,
+// sempre). Devolve Map link -> { titulo_pagina, json_ld }; se o Python falhar,
+// loga e devolve o Map vazio (quem chamou trata tudo como não lido).
+async function readAdPagesViaBrowser(links, { headless = false } = {}) {
+    const paginas = new Map();
+    if (links.length === 0) return paginas;
+
+    // O app.py grava a resposta ao lado da entrada, como <entrada>-resultado.json.
+    const entrada = path.join(os.tmpdir(), `brik-anuncios-${process.pid}-${Date.now()}.json`);
+    fs.writeFileSync(entrada, JSON.stringify(links));
+    try {
+        const { resultados = [] } = await runPythonScript(['--anuncios', entrada, ...(headless ? ['--headless'] : [])]);
+        resultados.forEach((r) => paginas.set(r.link, r));
+    } catch (err) {
+        console.error(`  ⚠ Falha ao abrir as páginas de anúncio pelo navegador: ${err.message}`);
+    } finally {
+        fs.rmSync(entrada, { force: true });
+        fs.rmSync(entrada.replace(/[.]json$/, '-resultado.json'), { force: true });
+    }
+    return paginas;
 }
 
-// Descrição do anúncio, ou null se não deu pra ler (bloqueio 403 do Cloudflare
-// aparece de forma intermitente, em ~1 de cada 4 requisições: repetir costuma passar).
-async function fetchAdDescription(url) {
-    const id = extractAdId(url);
-    if (!id) return null;
-    for (let tentativa = 1; tentativa <= 3; tentativa++) {
-        const page = await curlPage(`https://www.olx.com.br/vi/${id}`);
-        if (page && page.status === 200) return extractDescription(page.body);
-        if (page && page.status !== 403) return null; // fora do ar etc.: os strikes cuidam
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+// Descrição dos anúncios. Usa o link completo da raspagem deste ciclo quando tem
+// (linksOlx), senão o /vi/<id>. Devolve Map url canônica -> descrição, só com os
+// que deu pra ler; bloqueado, fora do ar ou sem descrição fica de fora e segue
+// pendente (o log agrupa esses pelo título da página).
+async function fetchDescriptionsViaBrowser(ads, { linksOlx = new Map(), headless = false } = {}) {
+    const alvos = ads
+        .map((ad) => {
+            const id = extractAdId(ad.url);
+            return { url: ad.url, link: linksOlx.get(ad.url) || (id && `https://www.olx.com.br/vi/${id}`) };
+        })
+        .filter((a) => a.link);
+    const paginas = await readAdPagesViaBrowser(alvos.map((a) => a.link), { headless });
+
+    const descricoes = new Map();
+    const falhas = new Map(); // título da página -> quantos anúncios
+    for (const { url, link } of alvos) {
+        const pagina = paginas.get(link);
+        const texto = pagina ? descriptionFromJsonLd(pagina.json_ld) : null;
+        if (texto) {
+            descricoes.set(url, texto);
+        } else {
+            const titulo = pagina?.titulo_pagina || 'sem resposta';
+            falhas.set(titulo, (falhas.get(titulo) || 0) + 1);
+        }
     }
-    return null;
+    if (falhas.size > 0) {
+        console.warn(`  Sem descrição, por título da página: ${[...falhas].map(([t, n]) => `"${t}" x${n}`).join(', ')}`);
+    }
+    return descricoes;
 }
 
 // Grava o veredito no cache (classificacoes_ia), em lotes de 40, pra sobreviver mesmo
@@ -1191,7 +1185,8 @@ async function cacheVeredito(coluna, urls) {
     }
 }
 
-async function verifyHighProfitDescriptions(category) {
+// leitura: { linksOlx, headless } repassado a fetchDescriptionsViaBrowser.
+async function verifyFeedDescriptions(category, leitura = {}) {
     // Anúncio já marcado com defeito pelo título (iPhone) fica de fora: já aparece
     // com aviso no card e não precisa gastar leitura nem Haiku.
     const { data: pendentes, error } = await supabase
@@ -1200,22 +1195,20 @@ async function verifyHighProfitDescriptions(category) {
         .eq('category', category)
         .eq('defeito', false)
         .is('verified_at', null)
-        .gte('profit_pct', LUCRO_MIN_VERIFICACAO)
-        .order('profit_pct', { ascending: false })
+        .neq('opportunity_level', 'nenhuma')
+        .order('profit_pct', { ascending: false, nullsFirst: false })
         .limit(DESCRIPTION_MAX_PER_CYCLE);
 
     if (error) throw new Error(`Erro ao buscar anúncios pendentes de verificação: ${error.message}`);
     if (pendentes.length === 0) return;
 
-    console.log(`  Verificando a descrição de ${pendentes.length} anúncio(s) com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
+    console.log(`  Verificando a descrição de ${pendentes.length} anúncio(s) do feed (maior lucro primeiro)...`);
 
-    const comDescricao = [];
-    let semDescricao = 0;
-    for (let i = 0; i < pendentes.length; i += OLX_PROBE_CONCURRENCY) {
-        const grupo = pendentes.slice(i, i + OLX_PROBE_CONCURRENCY);
-        const textos = await Promise.all(grupo.map((ad) => fetchAdDescription(ad.url)));
-        grupo.forEach((ad, j) => (textos[j] ? comDescricao.push({ ...ad, description: textos[j] }) : semDescricao++));
-    }
+    const descricoes = await fetchDescriptionsViaBrowser(pendentes, leitura);
+    const comDescricao = pendentes
+        .filter((ad) => descricoes.has(ad.url))
+        .map((ad) => ({ ...ad, description: descricoes.get(ad.url) }));
+    const semDescricao = pendentes.length - comDescricao.length;
     if (semDescricao > 0) {
         console.warn(`  ⚠ ${semDescricao} anúncio(s) sem descrição legível agora — ficam pendentes pro próximo ciclo.`);
     }
@@ -1316,7 +1309,7 @@ async function verifyHighProfitDescriptions(category) {
 // Processa UM produto já raspado: cache → Haiku → regras de variant → médias →
 // anuncios_ativos/historico_precos. NÃO trata strikes: isso é feito no fim do
 // ciclo, por categoria (ver run()).
-async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []) {
+async function processProduct(category, rawItemsRaw, condition, defeitoUrls = [], leituraDescricao = {}) {
     await dropDefectiveFromDatabase(defeitoUrls);
 
     // Deduplica por url — proteção extra contra duplicatas na raspagem
@@ -1396,22 +1389,53 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
         await processValidItems(validItems, category, mediaMap);
 
         if (VERIFY_DESCRIPTIONS) {
-            console.log(`5b. Verificando descrição dos anúncios com lucro >= ${LUCRO_MIN_VERIFICACAO}%...`);
-            await verifyHighProfitDescriptions(category);
+            console.log('5b. Verificando descrição dos anúncios do feed...');
+            await verifyFeedDescriptions(category, leituraDescricao);
         }
     }
 
     return { total: rawItems.length, gravados: validItems.length };
 }
 
+// Raspa, valida e grava UM produto; devolve a linha do resumo do ciclo. Erro na
+// raspagem (antes de gravar qualquer coisa) sai com err.naRaspagem = true.
+async function rodarProduto(produto, { headless, dryRun, tracker }) {
+    const nome = rotulo(produto);
+    let payload;
+    let dados;
+    try {
+        console.log('1. Rodando script Python de raspagem...');
+        payload = await runPythonScraper(produto, { headless });
+        dados = mapAndValidateScraperOutput(payload);
+    } catch (err) {
+        err.naRaspagem = true;
+        throw err;
+    }
+    const { category, items, seenUrls, defeitoUrls, linksOlx, condition } = dados;
+    // JSON de versão antiga do scraper não tem o campo: assume completo.
+    const completo = payload.completo !== false;
+    console.log(
+        `   ${items.length} itens válidos raspados (categoria: ${category}, ` +
+        `${payload.paginas_raspadas ?? '?'}/${payload.paginas_planejadas ?? '?'} páginas, ` +
+        `completo=${completo}).`
+    );
+    tracker.record(produto, category, seenUrls, completo);
+
+    if (dryRun) return { nome, ok: true, detalhe: `${items.length} itens (dry-run)`, completo };
+
+    const r = await processProduct(category, items, condition, defeitoUrls, { linksOlx, headless });
+    return { nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo };
+}
+
 // Ciclo completo: raspa e grava cada produto de PRODUTOS em sequência — quando
 // um termina, o próximo já começa — e só no fim aplica os strikes.
 //
-// Uso: node worker.js [busca ...] [--paginas N] [--dry-run] [--headless]
+// Uso: node worker.js [busca ...] [--paginas N | --primeiras N] [--dry-run] [--headless]
 //   node worker.js                 -> todos os produtos
 //   node worker.js iphone          -> só o iPhone (categoria inteira: aplica strikes nela)
 //   node worker.js ps5 xbox        -> só esses; strike só nas categorias 100% raspadas (aqui, nenhuma)
-//   node worker.js --paginas 1     -> teste rápido; raspagem parcial nunca aplica strikes
+//   node worker.js --paginas 1     -> teste rápido (última página); raspagem parcial nunca aplica strikes
+//   node worker.js --primeiras 5   -> só as 5 primeiras páginas (anúncios novos); também sem strikes
 //   node worker.js --dry-run       -> só raspa e valida; não usa Haiku nem grava no banco
 async function run() {
     const opts = parseArgs(process.argv.slice(2));
@@ -1423,40 +1447,44 @@ async function run() {
 
     console.log(
         `Ciclo com ${selecionados.length} produto(s): ${selecionados.map((p) => p.busca).join(', ')}` +
-        `${opts.dryRun ? ' [DRY-RUN]' : ''}${parcial ? ' [--paginas: raspagem parcial, sem strikes]' : ''}`
+        `${opts.dryRun ? ' [DRY-RUN]' : ''}` +
+        `${parcial ? ` [${opts.primeiras ? 'primeiras' : 'últimas'} ${opts.paginas} página(s): raspagem parcial, sem strikes]` : ''}`
     );
 
+    // Um produto com problema não derruba os outros; a categoria dele fica sem
+    // strike neste ciclo, pois a raspagem dela ficou incompleta.
+    const registrarFalha = (produto, err) => {
+        console.error(`\nFalha no produto "${rotulo(produto)}":`, err.message);
+        if (err.cause) console.error('Causa raiz:', err.cause);
+        tracker.fail(produto, err.message);
+        resumo.push({ nome: rotulo(produto), ok: false, detalhe: err.message });
+    };
+
+    // Raspagem que falhou (no Actions, o primeiro produto do ciclo costuma estourar
+    // o timeout na página 1 enquanto os seguintes passam) é repetida uma vez no fim
+    // do ciclo, com um Chrome novo. Só a raspagem: nessa etapa nada foi gravado
+    // ainda, então repetir não tem efeito colateral.
+    const ctx = { headless, dryRun: opts.dryRun, tracker };
+    const repetir = [];
     for (const [i, produto] of selecionados.entries()) {
-        const nome = rotulo(produto);
-        console.log(`\n=== [${i + 1}/${selecionados.length}] ${nome} ===`);
-
+        console.log(`\n=== [${i + 1}/${selecionados.length}] ${rotulo(produto)} ===`);
         try {
-            console.log('1. Rodando script Python de raspagem...');
-            const payload = await runPythonScraper(produto, { headless });
-            const { category, items, seenUrls, defeitoUrls, condition } = mapAndValidateScraperOutput(payload);
-            // JSON de versão antiga do scraper não tem o campo: assume completo.
-            const completo = payload.completo !== false;
-            console.log(
-                `   ${items.length} itens válidos raspados (categoria: ${category}, ` +
-                `${payload.paginas_raspadas ?? '?'}/${payload.paginas_planejadas ?? '?'} páginas, ` +
-                `completo=${completo}).`
-            );
-            tracker.record(produto, category, seenUrls, completo);
-
-            if (opts.dryRun) {
-                resumo.push({ nome, ok: true, detalhe: `${items.length} itens (dry-run)`, completo });
+            resumo.push(await rodarProduto(produto, ctx));
+        } catch (err) {
+            if (!err.naRaspagem) {
+                registrarFalha(produto, err);
                 continue;
             }
-
-            const r = await processProduct(category, items, condition, defeitoUrls);
-            resumo.push({ nome, ok: true, detalhe: `${r.total} raspados, ${r.gravados} no banco`, completo });
+            console.error(`\nFalha na raspagem de "${rotulo(produto)}" (nova tentativa no fim do ciclo):`, err.message);
+            repetir.push(produto);
+        }
+    }
+    for (const produto of repetir) {
+        console.log(`\n=== [nova tentativa] ${rotulo(produto)} ===`);
+        try {
+            resumo.push(await rodarProduto(produto, ctx));
         } catch (err) {
-            // Um produto com problema não derruba os outros; a categoria dele
-            // fica sem strike neste ciclo, pois a raspagem dela ficou incompleta.
-            console.error(`\nFalha no produto "${nome}":`, err.message);
-            if (err.cause) console.error('Causa raiz:', err.cause);
-            tracker.fail(produto, err.message);
-            resumo.push({ nome, ok: false, detalhe: err.message });
+            registrarFalha(produto, err);
         }
     }
 
@@ -1465,7 +1493,7 @@ async function run() {
         const { prontas, puladas } = tracker.resolve({ parcial });
         for (const { category, urls } of prontas) {
             console.log(`   Categoria ${category}: ${urls.length} anúncios vistos no ciclo.`);
-            await handleStrikes(category, urls);
+            await handleStrikes(category, urls, { headless });
         }
         for (const { category, motivo } of puladas) {
             console.warn(`   ⚠ Strikes PULADOS (${category}): ${motivo}.`);
@@ -1489,4 +1517,4 @@ if (require.main === module) {
         });
 }
 
-module.exports = { classifyBatch, fetchAllActiveRows, extractAdId, fetchAdDescription };
+module.exports = { classifyBatch, fetchAllActiveRows, extractAdId, fetchDescriptionsViaBrowser, probeManyViaBrowser };

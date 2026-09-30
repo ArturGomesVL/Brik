@@ -1,0 +1,78 @@
+name: Raspagem (base)
+
+# Reutilizado por scrape.yml (completa) e scrape-recentes.yml (5 primeiras páginas).
+on:
+  workflow_call:
+    inputs:
+      completo:
+        description: 'Todos os produtos e páginas, com strikes (ignora buscas/paginas)'
+        type: boolean
+        default: false
+      buscas:
+        type: string
+        default: ''
+      paginas:
+        type: string
+        default: ''
+      primeiras:
+        description: 'paginas conta a partir da 1ª página (mais recentes) em vez da última'
+        type: boolean
+        default: false
+      dry_run:
+        type: boolean
+        default: false
+      timeout:
+        type: number
+        default: 60
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependências do scraper (Python)
+        run: pip install -r scraper/requirements.txt
+
+      - name: Instalar dependências do worker (Node)
+        working-directory: worker
+        run: npm install
+
+      - name: Instalar tela virtual (Xvfb)
+        run: command -v xvfb-run || (sudo apt-get update -q && sudo apt-get install -y -q xvfb)
+
+      # Sem --headless: o OLX bloqueia o Chrome headless. O Xvfb dá uma tela
+      # virtual para o Chrome rodar com janela, como na máquina local.
+      - name: Rodar worker
+        working-directory: worker
+        run: |
+          args=()
+          if [ "$COMPLETO" != "true" ]; then
+            read -ra args <<< "$BUSCAS"
+            if [ -n "$PAGINAS" ]; then
+              if [ "$PRIMEIRAS" = "true" ]; then args+=(--primeiras "$PAGINAS"); else args+=(--paginas "$PAGINAS"); fi
+            fi
+          fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          echo "node worker.js ${args[*]}"
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node worker.js "${args[@]}"
+        env:
+          COMPLETO: ${{ inputs.completo }}
+          BUSCAS: ${{ inputs.buscas }}
+          PAGINAS: ${{ inputs.paginas }}
+          PRIMEIRAS: ${{ inputs.primeiras }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PYTHON_EXECUTABLE: python
+          PYTHON_SCRIPT_PATH: ${{ github.workspace }}/scraper/app.py

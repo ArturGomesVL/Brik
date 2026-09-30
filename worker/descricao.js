@@ -1,13 +1,11 @@
 // descricao.js
 //
-// Verificação de anúncios de lucro alto (>= LUCRO_MIN_VERIFICACAO) lendo a
-// DESCRIÇÃO no OLX. Um preço muito abaixo da média costuma ser aparelho com defeito,
+// Verificação dos anúncios do feed (opportunity_level diferente de 'nenhuma') lendo
+// a DESCRIÇÃO no OLX. Preço abaixo da média costuma ser aparelho com defeito,
 // bloqueado, réplica ou anúncio que não é o produto: o título quase nunca conta isso,
 // a descrição sim. Quem julga é o Haiku (prompt aqui); este módulo só tem a parte
-// pura — lucro, extração da descrição do HTML, prompt e leitura da resposta.
+// pura — lucro, leitura da página do anúncio, prompt e leitura da resposta.
 
-// Lucro percentual mínimo pra o anúncio passar pela verificação da descrição.
-const LUCRO_MIN_VERIFICACAO = 50;
 const DESCRICAO_MAX_CHARS = 1500;
 
 // Mesma conta do card no front: quanto o usuário ganha revendendo pela referência
@@ -40,15 +38,14 @@ function htmlParaTexto(html) {
 }
 
 // A página do anúncio traz um JSON-LD (schema.org/Product) com o campo "description".
-// Devolve o texto limpo, ou null se a página não tem descrição (ex: página de
-// bloqueio do Cloudflare, anúncio fora do ar).
-function extractDescription(html) {
-    const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
-    let m;
-    while ((m = re.exec(String(html || '')))) {
+// Recebe o conteúdo dos <script type="application/ld+json"> da página e devolve o
+// texto limpo, ou null se nenhum tem descrição (ex: página de bloqueio do
+// Cloudflare, anúncio fora do ar). Bloco que não é JSON válido é ignorado.
+function descriptionFromJsonLd(blocos) {
+    for (const bloco of blocos || []) {
         let json;
         try {
-            json = JSON.parse(m[1]);
+            json = JSON.parse(bloco);
         } catch (e) {
             continue;
         }
@@ -63,7 +60,37 @@ function extractDescription(html) {
     return null;
 }
 
-const VERIFICACAO_SYSTEM_PROMPT = `Você revisa anúncios do OLX pra um app que mostra oportunidades de compra (pra uso próprio ou revenda). Estes anúncios têm preço MUITO abaixo da média de mercado: sua tarefa é checar DOIS problemas independentes que a descrição pode revelar. Dê peso igual aos dois — não são casos raros dentro de "defeito", são duas perguntas separadas que você responde pra TODO anúncio.
+// Situação do anúncio pela página aberta no navegador ({ titulo_pagina, json_ld },
+// ver app.py --anuncios), usada antes de apagar por strike:
+//   'alive'        -> JSON-LD do produto com esse id: anúncio no ar
+//   'gone'         -> página "Anúncio não encontrado": saiu do ar, pode apagar
+//   'inconclusive' -> bloqueio do Cloudflare, timeout, sem resposta: adia
+function adPageStatus(pagina, id) {
+    if (!pagina) return 'inconclusive';
+    if (/n[ãa]o encontrado/i.test(pagina.titulo_pagina || '')) return 'gone';
+    for (const bloco of pagina.json_ld || []) {
+        let json;
+        try {
+            json = JSON.parse(bloco);
+        } catch (e) {
+            continue;
+        }
+        for (const node of Array.isArray(json) ? json : [json]) {
+            if (node && node['@type'] === 'Product' && (node.identifier == null || String(node.identifier) === String(id))) {
+                return 'alive';
+            }
+        }
+    }
+    return 'inconclusive';
+}
+
+// Mesma coisa, a partir do HTML inteiro da página.
+function extractDescription(html) {
+    const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
+    return descriptionFromJsonLd([...String(html || '').matchAll(re)].map((m) => m[1]));
+}
+
+const VERIFICACAO_SYSTEM_PROMPT = `Você revisa anúncios do OLX pra um app que mostra oportunidades de compra (pra uso próprio ou revenda). Estes anúncios têm preço abaixo da média de mercado (alguns muito abaixo): sua tarefa é checar DOIS problemas independentes que a descrição pode revelar. Dê peso igual aos dois — não são casos raros dentro de "defeito", são duas perguntas separadas que você responde pra TODO anúncio.
 
 PERGUNTA 1 — "defeito": o aparelho em si tem algum problema físico? Marque true SOMENTE se o título ou a descrição AFIRMAM pelo menos um destes:
 - está quebrado/trincado, não liga ou parte dele não funciona (tela, câmera, Face ID/Touch ID, bateria estufada, som, saída HDMI, leitor de disco...);
@@ -133,8 +160,9 @@ function parseVerdicts(rawText, ads) {
 }
 
 module.exports = {
-    LUCRO_MIN_VERIFICACAO,
     profitPct,
+    descriptionFromJsonLd,
+    adPageStatus,
     extractDescription,
     VERIFICACAO_SYSTEM_PROMPT,
     buildVerificationMessage,
