@@ -9,7 +9,7 @@ import { useAuthStore } from '../stores/useAuthStore.js'
 
 // Desligada durante o desenvolvimento, para navegar pelas telas sem login nem
 // quiz. Voltar para true antes de publicar o site.
-const PROTECAO_ATIVA = true
+const PROTECAO_ATIVA = false
 
 function RotaProtegida({ exigirQuiz = true }) {
   const location = useLocation()
