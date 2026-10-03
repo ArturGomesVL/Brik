@@ -54,14 +54,24 @@ export function paraForm(produto) {
 // Lista do usuário, do mais novo para o mais antigo, com a URL da 1ª foto de
 // cada produto (em `capa`).
 export async function listarEstoque() {
+  return comCapas(await linhasDoEstoque())
+}
+
+// Só as linhas, sem as fotos: uma consulta a menos para quem precisa dos
+// números logo (o Dashboard) e pode pôr as capas depois.
+export async function linhasDoEstoque() {
   const { data, error } = await supabase.from('estoque').select('*').order('created_at', { ascending: false })
   if (error) throw error
+  return data
+}
 
-  const capas = data.map((item) => item.fotos[0]).filter(Boolean)
-  if (capas.length === 0) return data
+// As mesmas linhas com a URL da 1ª foto de cada uma (em `capa`).
+export async function comCapas(linhas) {
+  const capas = linhas.map((item) => item.fotos[0]).filter(Boolean)
+  if (capas.length === 0) return linhas
 
   const urls = await urlsDasFotos(capas)
-  return data.map((item) => ({ ...item, capa: item.fotos[0] ? urls[item.fotos[0]] : null }))
+  return linhas.map((item) => ({ ...item, capa: item.fotos[0] ? urls[item.fotos[0]] : null }))
 }
 
 export async function buscarProduto(id) {

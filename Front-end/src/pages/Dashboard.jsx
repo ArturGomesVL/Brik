@@ -11,36 +11,60 @@ import MetricasMes from '../components/dashboard/MetricasMes.jsx'
 import MeuEstoque from '../components/dashboard/MeuEstoque.jsx'
 import { HiddenProvider } from '../components/dashboard/hidden.js'
 import { dashboardDoEstoque } from '../lib/dashboard.js'
-import { listarEstoque } from '../lib/estoque.js'
+import { comCapas, linhasDoEstoque } from '../lib/estoque.js'
 import { useUsuarioId } from '../stores/useAuthStore.js'
 import { usePreferenciasStore } from '../stores/usePreferenciasStore.js'
 import { ENTRANCE_MS, RevealContext, surfaceProps } from '../components/dashboard/reveal.js'
 
+// Teto da espera pelos dados antes de começar a entrada: com a rede lenta, a
+// tela entra zerada em vez de ficar parada no fundo vazio.
+const ESPERA_MAX_MS = 1500
+
 // Os números vêm do estoque do usuário (public.estoque): o que está em estoque
 // aparece em "Meu estoque" e o que foi marcado como vendido entra no lucro, nas
-// métricas e nos ROIs. Sem login, ou enquanto carrega, a tela fica zerada.
+// métricas e nos ROIs. Sem login a tela fica zerada.
 // Em desenvolvimento, /dashboard?exemplo mostra a tela com os números do mockup.
+//
+// `pronto` segura a entrada até os números chegarem: se eles chegassem no meio
+// dela, os blocos que trocam de vazio para cheio (lista, gráfico, rosca)
+// remontariam fora da sequência e a tela toda seria redesenhada durante a
+// animação. As capas das fotos vêm numa segunda ida (Edge Function do R2) e só
+// trocam o src das imagens, sem mexer na estrutura.
 function useDashboardData() {
   const { search } = useLocation()
   const exemplo = import.meta.env.DEV && new URLSearchParams(search).has('exemplo')
   const userId = useUsuarioId()
   const [linhas, setLinhas] = useState(null)
+  const [desistiu, setDesistiu] = useState(false)
 
   useEffect(() => {
     if (exemplo || !userId || userId === 'carregando') return
     let ativo = true
-    listarEstoque()
-      .then((lista) => ativo && setLinhas(lista))
-      .catch((error) => console.error('Erro ao carregar o estoque do dashboard:', error))
+    const teto = setTimeout(() => setDesistiu(true), ESPERA_MAX_MS)
+    linhasDoEstoque()
+      .then((lista) => {
+        if (!ativo) return
+        setLinhas(lista)
+        return comCapas(lista).then((comFotos) => ativo && setLinhas(comFotos))
+      })
+      .catch((error) => {
+        console.error('Erro ao carregar o estoque do dashboard:', error)
+        if (ativo) setDesistiu(true)
+      })
+      .finally(() => clearTimeout(teto))
     return () => {
       ativo = false
+      clearTimeout(teto)
     }
   }, [exemplo, userId])
 
-  return useMemo(() => {
+  const data = useMemo(() => {
     if (exemplo) return dashboardExemplo()
     return linhas && userId ? dashboardDoEstoque(linhas) : dashboardVazio()
   }, [exemplo, linhas, userId])
+
+  const pronto = exemplo || userId === null || linhas !== null || desistiu
+  return { data, pronto }
 }
 
 // Ordem em que a tela se monta. Cada bloco numera os próprios elementos a partir
@@ -59,17 +83,19 @@ const STEP = {
 }
 
 function Dashboard() {
-  const data = useDashboardData()
+  const { data, pronto } = useDashboardData()
   // Abre com os valores escondidos se o usuário pediu isso em Privacidade.
   const [hidden, setHidden] = useState(() => usePreferenciasStore.getState().ocultarValores)
 
-  // A entrada acontece só na montagem: depois dela a animação é desligada, para que
-  // trocar de aba ou de período não faça o conteúdo novo aparecer com atraso.
+  // A entrada acontece só na montagem do conteúdo (quando os dados ficam
+  // prontos): depois dela a animação é desligada, para que trocar de aba ou de
+  // período não faça o conteúdo novo aparecer com atraso.
   const [entering, setEntering] = useState(true)
   useEffect(() => {
+    if (!pronto) return
     const timer = setTimeout(() => setEntering(false), ENTRANCE_MS)
     return () => clearTimeout(timer)
-  }, [])
+  }, [pronto])
 
   return (
     <RevealContext.Provider value={entering}>
@@ -99,38 +125,41 @@ function Dashboard() {
 
           {/* No desktop: lucro e gráfico à esquerda, os indicadores menores à direita,
               e o estoque ocupando a largura toda embaixo. Os wrappers mantêm a mesma
-              ordem da coluna do celular. */}
-          <main className="flex flex-col gap-3 px-4 pt-4 lg:grid lg:grid-cols-12 lg:gap-5 lg:px-8 lg:pt-6">
-            <div className="lg:col-span-7">
-              <LucroAcumulado
-                step={STEP.lucro}
-                data={data.lucro}
-                hidden={hidden}
-                onToggleHidden={() => setHidden((h) => !h)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-3 lg:col-span-5 lg:gap-5">
-              <div className="grid grid-cols-[1.25fr_1fr] gap-3 lg:gap-5">
-                <CapitalParado step={STEP.capitalParado} data={data.capitalParado} />
-                <GiroMedio step={STEP.giroMedio} data={data.giroMedio} />
+              ordem da coluna do celular. Só monta com os dados prontos: é a montagem
+              que dispara a entrada animada. */}
+          {pronto && (
+            <main className="flex flex-col gap-3 px-4 pt-4 lg:grid lg:grid-cols-12 lg:gap-5 lg:px-8 lg:pt-6">
+              <div className="lg:col-span-7">
+                <LucroAcumulado
+                  step={STEP.lucro}
+                  data={data.lucro}
+                  hidden={hidden}
+                  onToggleHidden={() => setHidden((h) => !h)}
+                />
               </div>
 
-              <InvestimentoRetorno step={STEP.investimentoRetorno} data={data.investimentoRetorno} />
-            </div>
+              <div className="flex flex-col gap-3 lg:col-span-5 lg:gap-5">
+                <div className="grid grid-cols-[1.25fr_1fr] gap-3 lg:gap-5">
+                  <CapitalParado step={STEP.capitalParado} data={data.capitalParado} />
+                  <GiroMedio step={STEP.giroMedio} data={data.giroMedio} />
+                </div>
 
-            <div className="mt-4 lg:col-span-7 lg:mt-0">
-              <MetricasMes step={STEP.mes} data={data.mes} />
-            </div>
+                <InvestimentoRetorno step={STEP.investimentoRetorno} data={data.investimentoRetorno} />
+              </div>
 
-            <div className="lg:col-span-5">
-              <MelhoresRois step={STEP.rois} data={data.roisPorModelo} />
-            </div>
+              <div className="mt-4 lg:col-span-7 lg:mt-0">
+                <MetricasMes step={STEP.mes} data={data.mes} />
+              </div>
 
-            <div className="mt-4 lg:col-span-12">
-              <MeuEstoque step={STEP.estoque} data={data.estoque} />
-            </div>
-          </main>
+              <div className="lg:col-span-5">
+                <MelhoresRois step={STEP.rois} data={data.roisPorModelo} />
+              </div>
+
+              <div className="mt-4 lg:col-span-12">
+                <MeuEstoque step={STEP.estoque} data={data.estoque} />
+              </div>
+            </main>
+          )}
 
           {/* Atalho flutuante da calculadora (só no celular). Fica por cima do
               dashboard e não rola com a página. O wrapper repete mx-auto + max-w-md
