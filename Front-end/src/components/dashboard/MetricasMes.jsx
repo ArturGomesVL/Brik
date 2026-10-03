@@ -32,7 +32,7 @@ function MetricasMes({ step, data }) {
 
         <Tile
           label="Vendidos no mês"
-          delta={data.vendidosVar != null && <Delta value={data.vendidosVar} format={formatInt} note="vs. ago" />}
+          delta={data.vendidosVar != null && <Delta value={data.vendidosVar} format={formatInt} note={`vs. ${data.anterior}`} />}
           reveal={reveal(2, 'p-3.5')}
         >
           {formatInt(data.vendidos)}

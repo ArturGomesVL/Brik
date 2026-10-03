@@ -1,12 +1,17 @@
-// Formato dos dados do Dashboard. Ainda não existe no Supabase uma fonte de
-// estoque/vendas do usuário, então o padrão é o estado vazio. Quando a fonte
-// existir, basta devolver um objeto neste formato em useDashboardData().
+// Formato dos dados do Dashboard. Os números reais saem do estoque do usuário
+// (lib/dashboard.js); sem login ou sem produtos, vale o estado vazio.
 
 const emptyPeriod = { total: 0, variacao: null, labels: [], lucro: [], investimento: [] }
 
 const monthName = () => {
   const name = new Date().toLocaleString('pt-BR', { month: 'long' })
   return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+// "set", "out"… do mês passado, para o "vs." das métricas do mês.
+const previousMonthShort = () => {
+  const today = new Date()
+  return new Date(today.getFullYear(), today.getMonth() - 1, 1).toLocaleString('pt-BR', { month: 'short' }).replace('.', '')
 }
 
 export const dashboardVazio = () => ({
@@ -16,6 +21,7 @@ export const dashboardVazio = () => ({
   investimentoRetorno: { investido: 0, retornado: 0, roi: 0 },
   mes: {
     nome: monthName(),
+    anterior: previousMonthShort(),
     lucro: 0,
     lucroVar: null,
     vendidos: 0,
@@ -74,6 +80,7 @@ export const dashboardExemplo = () => ({
   investimentoRetorno: { investido: 24500, retornado: 36430, roi: 48.7 },
   mes: {
     nome: 'Setembro',
+    anterior: 'ago',
     lucro: 5320,
     lucroVar: 18.2,
     vendidos: 14,

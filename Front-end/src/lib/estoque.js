@@ -1,3 +1,4 @@
+import { STATUS_PADRAO } from '../data/produtosData.js'
 import { mascaraReais, reaisParaNumero } from './format.js'
 import { comprimirImagem } from './imagem.js'
 import { apagarImagens, enviarImagens, urlsDoEstoque } from './r2.js'
@@ -31,7 +32,7 @@ function paraLinha(form) {
     quantidade: Number(form.quantidade) || 1,
     custo: reaisOuNull(form.custo),
     venda: reaisOuNull(form.venda),
-    status: form.status || 'aguardando',
+    status: form.status || STATUS_PADRAO,
     descricao: form.descricao.trim() || null,
   }
 }

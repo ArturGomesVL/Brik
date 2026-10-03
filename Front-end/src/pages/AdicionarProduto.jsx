@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
 import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import { ArrowLeftIcon, CameraIcon } from '../components/icons.jsx'
-import { STATUS } from '../data/produtosData.js'
+import { STATUS_PADRAO, STATUS_SELETOR } from '../data/produtosData.js'
 import { buscarProduto, FORM_VAZIO, paraForm, salvarProduto, urlsDasFotos } from '../lib/estoque.js'
 import { mascaraReais } from '../lib/format.js'
 import { mensagemErro, useUsuarioId } from '../stores/useAuthStore.js'
@@ -181,6 +181,13 @@ function Formulario({ id, inicial }) {
     [],
   )
 
+  // "Vendido" só aparece ao editar um produto já vendido, para o seletor mostrar
+  // a situação dele; marcar como vendido é pelo ⋮ do card.
+  const opcoesStatus = [
+    ...STATUS_SELETOR.map(({ key, label }) => ({ value: key, label })),
+    ...(inicial.form.status === 'vendido' ? [{ value: 'vendido', label: 'Vendido' }] : []),
+  ]
+
   const campo = (key, mascara = (v) => v) => ({
     value: form[key],
     onChange: (event) => setForm((atual) => ({ ...atual, [key]: mascara(event.target.value) })),
@@ -215,8 +222,8 @@ function Formulario({ id, inicial }) {
         fotos: fotos.map((foto) => foto.caminho ?? foto.arquivo),
         fotosAntes: inicial.fotos.map((foto) => foto.caminho),
       })
-      // Volta para a lista já na aba do produto (sem situação, ele vai para Aguardando).
-      navigate('/adicionar', { replace: true, viewTransition: true, state: { aba: form.status || 'aguardando' } })
+      // Volta para a lista já na aba do produto (sem situação, ele vai para Não anunciado).
+      navigate('/adicionar', { replace: true, viewTransition: true, state: { aba: form.status || STATUS_PADRAO } })
     } catch (error) {
       console.error('Erro ao salvar o produto:', error)
       setErro(mensagemErro(error))
@@ -259,11 +266,7 @@ function Formulario({ id, inicial }) {
             {...campo('quantidade')}
           />
           <Campo label="Custo (R$):" inputMode="numeric" {...campo('custo', mascaraReais)} />
-          <Selecao
-            label="Status"
-            options={STATUS.map(({ key, label }) => ({ value: key, label }))}
-            {...campo('status')}
-          />
+          <Selecao label="Status" options={opcoesStatus} {...campo('status')} />
           <Campo label="Valor de venda (R$):" inputMode="numeric" {...campo('venda', mascaraReais)} />
 
           <label className="block">

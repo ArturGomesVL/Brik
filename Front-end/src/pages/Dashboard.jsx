@@ -10,16 +10,37 @@ import MelhoresRois from '../components/dashboard/MelhoresRois.jsx'
 import MetricasMes from '../components/dashboard/MetricasMes.jsx'
 import MeuEstoque from '../components/dashboard/MeuEstoque.jsx'
 import { HiddenProvider } from '../components/dashboard/hidden.js'
+import { dashboardDoEstoque } from '../lib/dashboard.js'
+import { listarEstoque } from '../lib/estoque.js'
+import { useUsuarioId } from '../stores/useAuthStore.js'
 import { usePreferenciasStore } from '../stores/usePreferenciasStore.js'
 import { ENTRANCE_MS, RevealContext, surfaceProps } from '../components/dashboard/reveal.js'
 
-// Ainda não há tabela de estoque/vendas do usuário no Supabase. Quando existir, é
-// aqui que os dados reais entram (mesmo formato de data/dashboardData.js).
+// Os números vêm do estoque do usuário (public.estoque): o que está em estoque
+// aparece em "Meu estoque" e o que foi marcado como vendido entra no lucro, nas
+// métricas e nos ROIs. Sem login, ou enquanto carrega, a tela fica zerada.
 // Em desenvolvimento, /dashboard?exemplo mostra a tela com os números do mockup.
 function useDashboardData() {
   const { search } = useLocation()
   const exemplo = import.meta.env.DEV && new URLSearchParams(search).has('exemplo')
-  return useMemo(() => (exemplo ? dashboardExemplo() : dashboardVazio()), [exemplo])
+  const userId = useUsuarioId()
+  const [linhas, setLinhas] = useState(null)
+
+  useEffect(() => {
+    if (exemplo || !userId || userId === 'carregando') return
+    let ativo = true
+    listarEstoque()
+      .then((lista) => ativo && setLinhas(lista))
+      .catch((error) => console.error('Erro ao carregar o estoque do dashboard:', error))
+    return () => {
+      ativo = false
+    }
+  }, [exemplo, userId])
+
+  return useMemo(() => {
+    if (exemplo) return dashboardExemplo()
+    return linhas && userId ? dashboardDoEstoque(linhas) : dashboardVazio()
+  }, [exemplo, linhas, userId])
 }
 
 // Ordem em que a tela se monta. Cada bloco numera os próprios elementos a partir

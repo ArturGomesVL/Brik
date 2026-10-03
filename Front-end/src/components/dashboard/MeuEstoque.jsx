@@ -4,10 +4,12 @@ import { COLOR } from './palette.js'
 import { useReveal } from './reveal.js'
 import { Card, Eyebrow, Masked, Segmented } from './ui.jsx'
 
-// Três estados, três tons: neutro enquanto espera, âmbar quando está preso a
-// alguém, verde quando virou resultado.
+// Neutro enquanto espera, âmbar quando está travado (no conserto ou preso a
+// alguém), verde quando virou resultado. "Reservado" só existe nos dados de exemplo.
 const STATUS = {
+  nao_anunciado: { label: 'Não anunciado', className: 'text-mute' },
   anunciado: { label: 'Anunciado', className: 'text-mute' },
+  conserto: { label: 'Conserto', className: 'text-warn' },
   reservado: { label: 'Reservado', className: 'text-warn' },
   vendido: { label: 'Vendido', className: 'text-profit' },
 }

@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import BrandHeader from '../components/BrandHeader.jsx'
 import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import { ArrowLeftIcon } from '../components/icons.jsx'
-import { STATUS } from '../data/produtosData.js'
+import { STATUS, STATUS_SELETOR } from '../data/produtosData.js'
 import { apagarProduto, listarEstoque, mudarStatus } from '../lib/estoque.js'
 import { formatBRL } from '../lib/format.js'
 import { useFecharPainel } from '../lib/usePainel.js'
@@ -11,12 +11,13 @@ import { useUsuarioId } from '../stores/useAuthStore.js'
 
 // "Meus Produtos": o estoque do usuário (public.estoque), aberto pelo "+" da
 // navbar. As abas filtram por situação e o seletor de cada card move o produto
-// entre elas (grava na hora). O ⋮ do card edita ou exclui.
+// entre elas (grava na hora). O ⋮ do card edita, marca como vendido ou exclui.
 
 const dataCurta = (iso) => new Date(iso).toLocaleDateString('pt-BR')
 
-// ⋮ do card: Editar leva ao formulário; Excluir pede confirmação.
-function Menu({ item, onExcluir }) {
+// ⋮ do card: Editar leva ao formulário; Marcar como vendido move para a aba
+// Vendidos; Excluir pede confirmação.
+function Menu({ item, onStatus, onExcluir }) {
   const navigate = useNavigate()
   const [aberto, setAberto] = useState(false)
   const raizRef = useRef(null)
@@ -40,7 +41,7 @@ function Menu({ item, onExcluir }) {
       </button>
 
       {aberto && (
-        <div className="painel-pop absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-xl bg-surface-card py-1 shadow-[0_12px_28px_-10px_rgba(0,0,0,0.35)] ring-1 ring-line [transform-origin:top_right]">
+        <div className="painel-pop absolute right-0 top-full z-30 mt-1 w-48 overflow-hidden rounded-xl bg-surface-card py-1 shadow-[0_12px_28px_-10px_rgba(0,0,0,0.35)] ring-1 ring-line [transform-origin:top_right]">
           <button
             type="button"
             onClick={() => navigate(`/adicionar/editar/${item.id}`, { viewTransition: true })}
@@ -48,6 +49,18 @@ function Menu({ item, onExcluir }) {
           >
             Editar
           </button>
+          {item.status !== 'vendido' && (
+            <button
+              type="button"
+              onClick={() => {
+                setAberto(false)
+                onStatus(item.id, 'vendido')
+              }}
+              className="block w-full px-3.5 py-2 text-left text-sm text-ink hover:bg-surface-raise"
+            >
+              Marcar como vendido
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -85,7 +98,7 @@ function Produto({ item, onStatus, onExcluir }) {
     <li className="rounded-2xl border border-line bg-surface-card p-3.5 shadow-[0_2px_8px_-4px_rgba(43,43,43,0.15)]">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium text-ink/70">{dataCurta(item.created_at)}</p>
-        <Menu item={item} onExcluir={onExcluir} />
+        <Menu item={item} onStatus={onStatus} onExcluir={onExcluir} />
       </div>
 
       <div className="mt-2 flex gap-3">
@@ -106,7 +119,8 @@ function Produto({ item, onStatus, onExcluir }) {
           </dl>
         </div>
 
-        {/* Seletor de situação: muda a aba em que o produto aparece. */}
+        {/* Seletor de situação: muda a aba em que o produto aparece. Vendido
+            só pelo ⋮; num vendido ele aparece fixo e escolher outra desfaz a venda. */}
         <label className="shrink-0 self-start">
           <span className="sr-only">Situação de {item.titulo}</span>
           <select
@@ -114,7 +128,12 @@ function Produto({ item, onStatus, onExcluir }) {
             onChange={(event) => onStatus(item.id, event.target.value)}
             className="rounded-lg bg-gain-bg px-2 py-1 text-[11px] font-medium text-gain outline-none"
           >
-            {STATUS.map(({ key, label }) => (
+            {item.status === 'vendido' && (
+              <option value="vendido" disabled>
+                Vendido
+              </option>
+            )}
+            {STATUS_SELETOR.map(({ key, label }) => (
               <option key={key} value={key}>
                 {label}
               </option>
