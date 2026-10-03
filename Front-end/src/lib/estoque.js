@@ -1,7 +1,7 @@
 import { STATUS_PADRAO } from '../data/produtosData.js'
 import { mascaraReais, reaisParaNumero } from './format.js'
 import { comprimirImagem } from './imagem.js'
-import { apagarImagens, enviarImagens, urlsDoEstoque } from './r2.js'
+import { apagarImagens, chaveDaMiniatura, enviarImagens, urlsDoEstoque, urlsEmCache } from './r2.js'
 import { supabase } from './supabase.js'
 
 // Estoque do usuário (public.estoque) e as fotos dele (Cloudflare R2, bucket
@@ -51,27 +51,36 @@ export function paraForm(produto) {
   }
 }
 
-// Lista do usuário, do mais novo para o mais antigo, com a URL da 1ª foto de
-// cada produto (em `capa`).
-export async function listarEstoque() {
-  return comCapas(await linhasDoEstoque())
-}
-
-// Só as linhas, sem as fotos: uma consulta a menos para quem precisa dos
-// números logo (o Dashboard) e pode pôr as capas depois.
+// Lista do usuário, do mais novo para o mais antigo, sem as fotos: as telas
+// mostram as linhas logo e põem as capas depois (capasEmCache / comCapas).
 export async function linhasDoEstoque() {
   const { data, error } = await supabase.from('estoque').select('*').order('created_at', { ascending: false })
   if (error) throw error
   return data
 }
 
-// As mesmas linhas com a URL da 1ª foto de cada uma (em `capa`).
-export async function comCapas(linhas) {
-  const capas = linhas.map((item) => item.fotos[0]).filter(Boolean)
-  if (capas.length === 0) return linhas
+// Capa do card: a miniatura da 1ª foto (`capa`, poucos KB) e a foto inteira
+// (`capaGrande`) para quando a miniatura não existe — fotos enviadas antes das
+// miniaturas, ou se o envio dela falhou. Quem mostra troca no onError.
+const chavesDasCapas = (linhas) =>
+  linhas.flatMap((item) => (item.fotos[0] ? [chaveDaMiniatura(item.fotos[0]), item.fotos[0]] : []))
 
-  const urls = await urlsDasFotos(capas)
-  return linhas.map((item) => ({ ...item, capa: item.fotos[0] ? urls[item.fotos[0]] : null }))
+const aplicarCapas = (linhas, urls) =>
+  linhas.map((item) => {
+    const foto = item.fotos[0]
+    if (!foto || !urls[foto]) return item
+    return { ...item, capa: urls[chaveDaMiniatura(foto)] ?? urls[foto], capaGrande: urls[foto] }
+  })
+
+// As linhas com as capas que já têm link guardado (sem rede): a tela pode
+// mostrar as fotos na hora quando o usuário volta.
+export const capasEmCache = (linhas) => aplicarCapas(linhas, urlsEmCache(chavesDasCapas(linhas)))
+
+// As linhas com todas as capas (pede à função só os links que faltam).
+export async function comCapas(linhas) {
+  const chaves = chavesDasCapas(linhas)
+  if (chaves.length === 0) return linhas
+  return aplicarCapas(linhas, await urlsDasFotos(chaves))
 }
 
 export async function buscarProduto(id) {
@@ -83,13 +92,24 @@ export async function buscarProduto(id) {
 // { caminho: link temporário (1 h) }.
 export const urlsDasFotos = urlsDoEstoque
 
-// Reduz as fotos e sobe todas de uma vez para a pasta do produto.
+// Lado maior da miniatura: os cards mostram a capa com 56–64 px, e 240 cobre
+// telas de densidade 3x.
+const LADO_MINIATURA = 240
+
+// Reduz as fotos e sobe todas de uma vez para a pasta do produto, cada uma com
+// a sua miniatura.
 async function enviarFotos(produtoId, arquivos) {
   if (arquivos.length === 0) return []
-  const imagens = await Promise.all(arquivos.map((arquivo) => comprimirImagem(arquivo)))
-  const { chaves } = await enviarImagens('estoque', imagens, produtoId)
+  const [imagens, miniaturas] = await Promise.all([
+    Promise.all(arquivos.map((arquivo) => comprimirImagem(arquivo))),
+    Promise.all(arquivos.map((arquivo) => comprimirImagem(arquivo, LADO_MINIATURA, 0.8))),
+  ])
+  const { chaves } = await enviarImagens('estoque', imagens, produtoId, miniaturas)
   return chaves
 }
+
+// Apagar uma foto leva junto a miniatura (a função ignora a que não existir).
+const comMiniaturas = (chaves) => chaves.flatMap((chave) => [chave, chaveDaMiniatura(chave)])
 
 // Cria ou atualiza. `fotos` é a lista final na ordem da tela: caminhos já
 // guardados (string) e arquivos novos (File). As fotos que saíram da lista são
@@ -117,7 +137,7 @@ export async function salvarProduto({ id, form, fotos, fotosAntes = [] }) {
   if (error) throw error
 
   const removidas = fotosAntes.filter((caminho) => !caminhos.includes(caminho))
-  await apagarImagens('estoque', removidas)
+  await apagarImagens('estoque', comMiniaturas(removidas))
   return produtoId
 }
 
@@ -130,5 +150,5 @@ export async function mudarStatus(id, status) {
 export async function apagarProduto(produto) {
   const { error } = await supabase.from('estoque').delete().eq('id', produto.id)
   if (error) throw error
-  await apagarImagens('estoque', produto.fotos)
+  await apagarImagens('estoque', comMiniaturas(produto.fotos))
 }

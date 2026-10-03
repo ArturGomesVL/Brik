@@ -1,7 +1,7 @@
 import { dashboardVazio } from '../data/dashboardData.js'
 
 // Monta os números do Dashboard a partir do estoque do usuário (public.estoque,
-// como vem de listarEstoque). Custo e venda são por unidade e multiplicam pela
+// como vem de linhasDoEstoque). Custo e venda são por unidade e multiplicam pela
 // quantidade. Uma venda é um produto com status "vendido": entra na data de
 // vendido_em (o banco preenche ao marcar), e o tempo até vender conta a partir
 // de quando o produto foi adicionado (created_at).
@@ -157,6 +157,7 @@ export function dashboardDoEstoque(linhas, hoje = new Date()) {
     dias: diasDesde(desde),
     status: l.status,
     imagem: l.capa ?? null,
+    imagemGrande: l.capaGrande ?? null,
   })
 
   return {

@@ -4,7 +4,7 @@ import BrandHeader from '../components/BrandHeader.jsx'
 import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import { ArrowLeftIcon } from '../components/icons.jsx'
 import { STATUS, STATUS_SELETOR } from '../data/produtosData.js'
-import { apagarProduto, listarEstoque, mudarStatus } from '../lib/estoque.js'
+import { apagarProduto, capasEmCache, comCapas, linhasDoEstoque, mudarStatus } from '../lib/estoque.js'
 import { formatBRL } from '../lib/format.js'
 import { useFecharPainel } from '../lib/usePainel.js'
 import { useUsuarioId } from '../stores/useAuthStore.js'
@@ -77,9 +77,19 @@ function Menu({ item, onStatus, onExcluir }) {
   )
 }
 
-function Foto({ src }) {
+// `src` é a miniatura; se ela não existir (foto antiga), cai na `reserva`, a foto inteira.
+function Foto({ src, reserva }) {
+  const [falhou, setFalhou] = useState(false)
   if (src) {
-    return <img src={src} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+    return (
+      <img
+        src={falhou ? reserva : src}
+        alt=""
+        decoding="async"
+        onError={() => !falhou && reserva && reserva !== src && setFalhou(true)}
+        className="h-16 w-16 shrink-0 rounded-xl object-cover"
+      />
+    )
   }
   return (
     <span
@@ -102,7 +112,7 @@ function Produto({ item, onStatus, onExcluir }) {
       </div>
 
       <div className="mt-2 flex gap-3">
-        <Foto src={item.capa} />
+        <Foto key={item.capa} src={item.capa} reserva={item.capaGrande} />
 
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold">{item.titulo}</p>
@@ -165,8 +175,25 @@ function MeusProdutos() {
   useEffect(() => {
     if (!userId || userId === 'carregando') return
     let ativo = true
-    listarEstoque()
-      .then((lista) => ativo && setItens(lista))
+    // A lista aparece assim que as linhas chegam, já com as capas guardadas; as
+    // que faltam entram depois, sem desfazer o que o usuário mudou nesse meio-tempo.
+    linhasDoEstoque()
+      .then((lista) => {
+        if (!ativo) return
+        setItens(capasEmCache(lista))
+        comCapas(lista)
+          .then((comFotos) => {
+            if (!ativo) return
+            const porId = new Map(comFotos.map((item) => [item.id, item]))
+            setItens((atual) =>
+              atual.map((item) => {
+                const fotos = porId.get(item.id)
+                return fotos ? { ...item, capa: fotos.capa, capaGrande: fotos.capaGrande } : item
+              }),
+            )
+          })
+          .catch((error) => console.error('Erro ao carregar as fotos do estoque:', error))
+      })
       .catch((error) => {
         console.error('Erro ao carregar o estoque:', error)
         if (ativo) {

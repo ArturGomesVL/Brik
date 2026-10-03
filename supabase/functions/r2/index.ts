@@ -3,7 +3,9 @@
 // (secrets R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY), confere quem
 // está logado e só mexe na pasta dele (<user_id>/...).
 //
-// POST multipart (campos: bucket, pasta?, arquivo[]) -> envia; devolve { chaves, urls }
+// POST multipart (campos: bucket, pasta?, arquivo[], miniatura[]?) -> envia; devolve { chaves, urls }
+//   miniatura[i], se vier, é a versão pequena de arquivo[i] (para os cards) e
+//   fica em <chave>-mini.<ext> (ver chaveDaMiniatura).
 // POST JSON { acao: 'urls', chaves }                  -> links temporários (bucket privado de estoque)
 // POST JSON { acao: 'apagar', bucket, chaves }        -> apaga
 
@@ -45,6 +47,23 @@ const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', apikey)
 
 class ErroDoPedido extends Error {}
 
+// "<uid>/<pasta>/<uuid>.jpg" -> "<uid>/<pasta>/<uuid>-mini.jpg". O site deriva a
+// mesma chave (lib/r2.js), então não precisa guardá-la no banco.
+const chaveDaMiniatura = (chave: string) => chave.replace(/(\.\w+)$/, '-mini$1')
+
+// As chaves são UUIDs novos a cada envio: o conteúdo nunca muda, então o
+// navegador pode guardar a foto para sempre (o bucket público também na CDN).
+const cacheImutavel = (publico: boolean) => `${publico ? 'public' : 'private'}, max-age=31536000, immutable`
+
+async function subir(config: { nome: string; publico?: string }, chave: string, arquivo: File) {
+  const resposta = await r2.fetch(urlDoObjeto(config.nome, chave), {
+    method: 'PUT',
+    body: await arquivo.arrayBuffer(),
+    headers: { 'Content-Type': arquivo.type, 'Cache-Control': cacheImutavel(Boolean(config.publico)) },
+  })
+  if (!resposta.ok) throw new Error(`R2 recusou o envio (${resposta.status}): ${await resposta.text()}`)
+}
+
 async function enviar(form: FormData, uid: string) {
   const config = BUCKETS[String(form.get('bucket'))]
   if (!config) throw new ErroDoPedido('Bucket inválido.')
@@ -53,20 +72,22 @@ async function enviar(form: FormData, uid: string) {
 
   const arquivos = form.getAll('arquivo').filter((a): a is File => a instanceof File)
   if (arquivos.length === 0 || arquivos.length > MAX_ARQUIVOS) throw new ErroDoPedido('Envie de 1 a 10 fotos.')
-  for (const arquivo of arquivos) {
+  const miniaturas = form.getAll('miniatura').filter((a): a is File => a instanceof File)
+  if (miniaturas.length && miniaturas.length !== arquivos.length) {
+    throw new ErroDoPedido('Mande uma miniatura para cada foto, ou nenhuma.')
+  }
+  for (const arquivo of [...arquivos, ...miniaturas]) {
     if (!TIPOS[arquivo.type]) throw new ErroDoPedido('Formato não aceito: use JPEG, PNG ou WebP.')
     if (arquivo.size > config.limite) throw new ErroDoPedido('Foto grande demais.')
   }
 
   const chaves = await Promise.all(
-    arquivos.map(async (arquivo) => {
+    arquivos.map(async (arquivo, i) => {
       const chave = `${uid}/${pasta ? `${pasta}/` : ''}${crypto.randomUUID()}.${TIPOS[arquivo.type]}`
-      const resposta = await r2.fetch(urlDoObjeto(config.nome, chave), {
-        method: 'PUT',
-        body: await arquivo.arrayBuffer(),
-        headers: { 'Content-Type': arquivo.type },
-      })
-      if (!resposta.ok) throw new Error(`R2 recusou o envio (${resposta.status}): ${await resposta.text()}`)
+      await Promise.all([
+        subir(config, chave, arquivo),
+        miniaturas[i] && subir(config, chaveDaMiniatura(chave), miniaturas[i]),
+      ])
       return chave
     }),
   )

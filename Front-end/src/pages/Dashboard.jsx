@@ -11,7 +11,7 @@ import MetricasMes from '../components/dashboard/MetricasMes.jsx'
 import MeuEstoque from '../components/dashboard/MeuEstoque.jsx'
 import { HiddenProvider } from '../components/dashboard/hidden.js'
 import { dashboardDoEstoque } from '../lib/dashboard.js'
-import { comCapas, linhasDoEstoque } from '../lib/estoque.js'
+import { capasEmCache, comCapas, linhasDoEstoque } from '../lib/estoque.js'
 import { useUsuarioId } from '../stores/useAuthStore.js'
 import { usePreferenciasStore } from '../stores/usePreferenciasStore.js'
 import { ENTRANCE_MS, RevealContext, surfaceProps } from '../components/dashboard/reveal.js'
@@ -44,7 +44,7 @@ function useDashboardData() {
     linhasDoEstoque()
       .then((lista) => {
         if (!ativo) return
-        setLinhas(lista)
+        setLinhas(capasEmCache(lista))
         return comCapas(lista).then((comFotos) => ativo && setLinhas(comFotos))
       })
       .catch((error) => {
