@@ -1,10 +1,9 @@
 name: Raspagem completa
 
+# Sem schedule: o do GitHub atrasava horas ou pulava execuções. Quem dispara
+# é o pg_cron do Supabase (job 'raspagem-completa', 07h17 em Recife = 10h17 UTC),
+# chamando a API com ciclo_completo=true.
 on:
-  schedule:
-    # 07h17 em Recife (UTC-3) = 10h17 UTC, uma vez por dia (minuto 17 e não 00:
-    # agendamento na hora cheia é o que o GitHub mais atrasa ou descarta)
-    - cron: '17 10 * * *'
   workflow_dispatch:
     inputs:
       ciclo_completo:
@@ -35,7 +34,7 @@ jobs:
     uses: ./.github/workflows/raspagem-base.yml
     secrets: inherit
     with:
-      completo: ${{ github.event_name == 'schedule' || inputs.ciclo_completo == true }}
+      completo: ${{ inputs.ciclo_completo == true }}
       buscas: ${{ inputs.buscas }}
       paginas: ${{ inputs.paginas }}
       dry_run: ${{ inputs.dry_run == true }}
