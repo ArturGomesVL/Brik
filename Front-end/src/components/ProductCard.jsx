@@ -51,7 +51,7 @@ function GraficoLucro({ className = '' }) {
 }
 
 // `vendido` (nos Salvos, quando o anúncio sumiu da OLX): a foto fica borrada,
-// com "Vendido" em vermelho por cima, e o selo de desconto some.
+// com "Vendido" em branco por cima, e o selo de desconto some.
 function ProductCard({ item, vendido = false }) {
   // A estrela grava em public.salvos (ver useSalvosStore).
   const saved = useSalvosStore((state) => state.itens.some((s) => s.anuncio_url === item.url))
@@ -109,7 +109,7 @@ function ProductCard({ item, vendido = false }) {
           )}
 
           {vendido && (
-            <span className="absolute inset-0 flex items-center justify-center text-2xl font-extrabold uppercase tracking-wider text-red-600 [text-shadow:0_0_6px_rgba(255,255,255,0.9),0_0_2px_rgba(255,255,255,0.9)] lg:text-3xl">
+            <span className="absolute inset-0 flex items-center justify-center text-2xl font-extrabold uppercase tracking-wider text-white [text-shadow:0_1px_6px_rgba(0,0,0,0.55),0_0_2px_rgba(0,0,0,0.4)] lg:text-3xl">
               Vendido
             </span>
           )}
