@@ -24,7 +24,7 @@ const PRODUTOS = [
 ];
 
 // A condição de cada anúncio vem do filtro da busca do OLX (o campo "condicao" do
-// produto), NÃO do Haiku: numa busca de usado, título com "lacrado" continua usado.
+// produto), NÃO da IA: numa busca de usado, título com "lacrado" continua usado.
 // O banco só aceita novo/usado; "defeito" (também suportado pelo app.py) não tem
 // linha própria no banco, então é recusado em vez de gravar errado.
 const CONDICAO_PARA_BANCO = { novo: 'novo', usado: 'usado' };

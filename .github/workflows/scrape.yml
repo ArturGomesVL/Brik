@@ -20,7 +20,7 @@ on:
         type: string
         default: '1'
       dry_run:
-        description: 'Dry-run: só raspa, sem Haiku e sem gravar no banco'
+        description: 'Dry-run: só raspa, sem IA e sem gravar no banco'
         type: boolean
         default: false
 

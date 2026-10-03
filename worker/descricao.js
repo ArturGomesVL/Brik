@@ -3,7 +3,7 @@
 // Verificação dos anúncios do feed (opportunity_level diferente de 'nenhuma') lendo
 // a DESCRIÇÃO no OLX. Preço abaixo da média costuma ser aparelho com defeito,
 // bloqueado, réplica ou anúncio que não é o produto: o título quase nunca conta isso,
-// a descrição sim. Quem julga é o Haiku (prompt aqui); este módulo só tem a parte
+// a descrição sim. Quem julga é a IA (prompt aqui); este módulo só tem a parte
 // pura — lucro, leitura da página do anúncio, prompt e leitura da resposta.
 
 const DESCRICAO_MAX_CHARS = 1500;
@@ -122,7 +122,7 @@ function buildVerificationMessage(ads) {
         .join('\n\n');
 }
 
-// Casa a resposta do Haiku com os anúncios pelo id ecoado (não pela posição: já houve
+// Casa a resposta da IA com os anúncios pelo id ecoado (não pela posição: já houve
 // lote devolvido deslocado). Devolve Map url -> { defeito, diverge, reprovado, motivo };
 // reprovado = defeito || diverge (qualquer um dos dois tira o anúncio do banco).
 // Anúncio sem resposta válida (falta um dos dois campos) fica de fora e continua
@@ -133,9 +133,9 @@ function parseVerdicts(rawText, ads) {
     try {
         lista = JSON.parse(clean);
     } catch (e) {
-        throw new Error(`Falha ao parsear a verificação do Claude: ${e.message}\nResposta bruta: ${rawText}`);
+        throw new Error(`Falha ao parsear a verificação da IA: ${e.message}\nResposta bruta: ${rawText}`);
     }
-    if (!Array.isArray(lista)) throw new Error(`Verificação do Claude não veio como array: ${clean.slice(0, 200)}`);
+    if (!Array.isArray(lista)) throw new Error(`Verificação da IA não veio como array: ${clean.slice(0, 200)}`);
 
     const porId = new Map();
     for (const c of lista) {

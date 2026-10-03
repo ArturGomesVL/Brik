@@ -73,6 +73,11 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # IA: gemini → groq → anthropic (pago, última instância); quem não tem secret é pulado.
+          # A variável LLM_CADEIA (Settings → Variables) muda a ordem, ex.: "gemini,anthropic".
+          LLM_CADEIA: ${{ vars.LLM_CADEIA }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PYTHON_EXECUTABLE: python
           PYTHON_SCRIPT_PATH: ${{ github.workspace }}/scraper/app.py

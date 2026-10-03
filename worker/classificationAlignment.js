@@ -1,6 +1,6 @@
 // classificationAlignment.js
 //
-// O Haiku classifica os títulos em lote e devolve um array com "index". Confiar
+// A IA classifica os títulos em lote e devolve um array com "index". Confiar
 // só no index é frágil: numa execução ele devolveu uma lista deslocada em uma
 // posição e cada anúncio ficou com o variant do título seguinte. Por isso o
 // prompt pede o título de volta ("titulo") e o casamento é feito por ele.

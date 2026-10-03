@@ -1,13 +1,13 @@
 // worker.js
 //
 // Worker de ingestão do Brique — conecta scraper Python (Selenium) → cache
-// de classificação → Claude Haiku → Supabase.
+// de classificação → IA (Gemini por padrão) → Supabase.
 //
 // Fluxo:
 //   1. Roda o script Python (Selenium) como subprocesso e espera terminar
 //   2. Lê e valida o JSON gerado pelo script
 //   3. Separa o que já está em cache (classificacoes_ia) do que é novo
-//   4. Classifica os itens novos em lote via Claude Haiku
+//   4. Classifica os itens novos em lote via IA
 //   5. Grava em anuncios_ativos / historico_precos e trata strikes
 //
 // Rodar manualmente por enquanto: node worker.js
@@ -46,7 +46,64 @@ const {
 // ------------------------------------------------------------------
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// IA que classifica títulos e julga descrições. A chamada percorre LLM_CADEIA em
+// ordem (provedor sem chave configurada é pulado): primeiro as gratuitas, e só
+// quando todas falham o pago (Haiku), como última instância. Gemini e Groq falam
+// o formato da OpenAI.
+const LLM_PROVIDERS = {
+    gemini: {
+        url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+        apiKeyEnv: 'GEMINI_API_KEY',
+        formato: 'openai',
+        // Cota do plano gratuito é contada por modelo: quando um responde 503
+        // (sobrecarga) ou 429 (limite), o próximo da lista costuma responder.
+        modelos: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'],
+        // Pensamento curto: classificação não precisa de raciocínio longo, e o
+        // pensamento conta no limite de tokens de saída.
+        extra: { reasoning_effort: 'low' },
+    },
+    groq: {
+        url: 'https://api.groq.com/openai/v1/chat/completions',
+        apiKeyEnv: 'GROQ_API_KEY',
+        formato: 'openai',
+        // Plano gratuito: 8.000 tokens/min por modelo (~1 lote de 25 títulos por minuto).
+        // qwen/qwen3.8-27b recusou o lote de consoles ("Request too large") nesse limite.
+        modelos: ['openai/gpt-oss-120b'],
+    },
+    anthropic: {
+        url: 'https://api.anthropic.com/v1/messages',
+        apiKeyEnv: 'ANTHROPIC_API_KEY',
+        formato: 'anthropic',
+        modelos: ['claude-haiku-4-5-20251001'],
+        pago: true,
+    },
+};
+const LLM_CADEIA = (process.env.LLM_CADEIA || 'gemini,groq,anthropic')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+for (const nome of LLM_CADEIA) {
+    if (!LLM_PROVIDERS[nome]) {
+        throw new Error(`LLM_CADEIA com provedor inválido: "${nome}" (use ${Object.keys(LLM_PROVIDERS).join(', ')})`);
+    }
+}
+const LLM_CANDIDATOS = LLM_CADEIA.flatMap((nome) => {
+    const provider = LLM_PROVIDERS[nome];
+    const apiKey = process.env[provider.apiKeyEnv];
+    return apiKey ? provider.modelos.map((model) => ({ nome, provider, model, apiKey })) : [];
+});
+// Camadas: gratuitas antes, pagas depois. Cada camada tem LLM_RODADAS passadas,
+// com espera entre elas (limite por minuto e sobrecarga costumam passar logo).
+const LLM_CAMADAS = [
+    LLM_CANDIDATOS.filter((c) => !c.provider.pago),
+    LLM_CANDIDATOS.filter((c) => c.provider.pago),
+].filter((camada) => camada.length > 0);
+const LLM_RODADAS = 2;
+const LLM_ESPERA_MS = 30000;
+// Modelos fora pelo resto do ciclo: cota diária esgotada, chave inválida ou modelo
+// removido — insistir só gasta tempo.
+const llmIndisponiveis = new Set();
 
 // Caminho do app.py (Selenium) e do interpretador que tem o Selenium
 // instalado (se você usa venv, aponte pro python.exe de dentro dele —
@@ -55,7 +112,6 @@ const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || 'python';
 const PYTHON_SCRIPT_PATH = process.env.PYTHON_SCRIPT_PATH;
 const PYTHON_TIMEOUT_MS = Number(process.env.PYTHON_TIMEOUT_MS) || 30 * 60 * 1000; // 30 min de segurança, ajuste via env se precisar
 
-const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 const BATCH_SIZE = 25;
 
 // Faixa de preço absurdo por categoria — abaixo/acima disso, descarta
@@ -88,7 +144,7 @@ const VERIFY_STRIKES_ON_OLX = process.env.STRIKE_VERIFY !== 'false';
 const OLX_PROBE_MAX = 250;
 
 // Todo anúncio do feed (opportunity_level diferente de 'nenhuma') tem a descrição
-// lida no OLX e julgada pelo Haiku; com defeito (ou algo que não é o produto), é
+// lida no OLX e julgada pela IA; com defeito (ou algo que não é o produto), é
 // removido — ou, no iPhone, marcado com defeito. VERIFY_DESCRIPTIONS=false desliga.
 const VERIFY_DESCRIPTIONS = process.env.VERIFY_DESCRIPTIONS !== 'false';
 const DESCRIPTION_BATCH_SIZE = 10;
@@ -284,7 +340,7 @@ function mapAndValidateScraperOutput(payload) {
         }
 
         // Título que já diz que o produto tem defeito: nas categorias que não
-        // mantêm defeituosos (consoles) não entra no banco (nem vai pro Haiku/cache:
+        // mantêm defeituosos (consoles) não entra no banco (nem vai pra IA/cache:
         // se o vendedor editar o título, o anúncio é reavaliado). Em iPhone ele segue
         // o fluxo normal, marcado com defeito (o front mostra o aviso).
         const defeito = defeitoNoTitulo(title);
@@ -392,7 +448,7 @@ async function splitCachedAndNew(items) {
             invalidadas++;
             toClassify.push(item);
         } else if (hit) {
-            // "defeito" da linha de cache é o julgamento do Haiku; vira defeito_ia pra
+            // "defeito" da linha de cache é o julgamento da IA; vira defeito_ia pra
             // não colidir com o defeito detectado agora pelas palavras do título.
             const { defeito: defeitoCache, ...resto } = hit;
             cached.push({ ...item, ...resto, defeito_ia: defeitoCache === true });
@@ -406,36 +462,87 @@ async function splitCachedAndNew(items) {
 
     return { cached, toClassify };
 }
-// Chamada única ao Haiku (classificação e verificação de descrição): devolve o texto da resposta.
-async function callHaiku(systemPrompt, userContent) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-            model: HAIKU_MODEL,
-            max_tokens: 4096,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userContent }],
-        }),
-    });
+// Uma tentativa num modelo: { texto } se respondeu, senão { erro, indisponivel }
+// (indisponivel = não adianta tentar esse modelo de novo neste ciclo).
+async function chamarModelo({ provider, model, apiKey }, systemPrompt, userContent) {
+    const anthropic = provider.formato === 'anthropic';
+    const headers = anthropic
+        ? { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+        : { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
+    const body = anthropic
+        ? {
+              model,
+              max_tokens: 4096,
+              system: systemPrompt,
+              messages: [{ role: 'user', content: userContent }],
+          }
+        : {
+              model,
+              max_tokens: 16384,
+              messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: userContent },
+              ],
+              ...provider.extra,
+          };
 
-    if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Claude API error: ${response.status} - ${errText}`);
+    let response;
+    try {
+        response = await fetch(provider.url, { method: 'POST', headers, body: JSON.stringify(body) });
+    } catch (err) {
+        return { erro: `falha de rede: ${err.message}` };
     }
 
-    const data = await response.json();
-    return data.content
-        .map((block) => (block.type === 'text' ? block.text : ''))
-        .join('');
+    if (response.ok) {
+        const data = await response.json();
+        if (anthropic) {
+            return { texto: data.content.map((block) => (block.type === 'text' ? block.text : '')).join('') };
+        }
+        const choice = data.choices?.[0];
+        if (choice?.finish_reason === 'length') return { erro: 'resposta cortada no limite de tokens' };
+        return { texto: choice?.message?.content || '' };
+    }
+
+    const errText = (await response.text()).replace(/\s+/g, ' ');
+    // 429 de cota DIÁRIA (Gemini: "...PerDay...", Groq: "requests per day (RPD)")
+    // só volta no dia seguinte; o 429 por minuto passa sozinho.
+    const cotaDiaria = response.status === 429 && /per ?day|\bRPD\b|\bTPD\b|daily/i.test(errText);
+    const configInvalida = [401, 403, 404].includes(response.status);
+    return { erro: `${response.status} - ${errText.slice(0, 300)}`, indisponivel: cotaDiaria || configInvalida };
+}
+
+// Chamada única à IA (classificação e verificação de descrição): devolve o texto da resposta.
+async function callLLM(systemPrompt, userContent) {
+    if (LLM_CANDIDATOS.length === 0) {
+        const chaves = LLM_CADEIA.map((nome) => LLM_PROVIDERS[nome].apiKeyEnv).join(' ou ');
+        throw new Error(`Nenhuma IA configurada: defina ${chaves}`);
+    }
+
+    const falhas = [];
+    for (const camada of LLM_CAMADAS) {
+        for (let rodada = 0; rodada < LLM_RODADAS; rodada++) {
+            const disponiveis = camada.filter((c) => !llmIndisponiveis.has(`${c.nome}/${c.model}`));
+            if (disponiveis.length === 0) break;
+            if (rodada > 0) {
+                console.warn(`  Todas as IAs ${camada[0].provider.pago ? 'pagas' : 'gratuitas'} falharam; nova rodada em ${LLM_ESPERA_MS / 1000}s...`);
+                await new Promise((r) => setTimeout(r, LLM_ESPERA_MS));
+            }
+            for (const c of disponiveis) {
+                if (c.provider.pago && LLM_CAMADAS.length > 1) console.warn(`  ⚠ IAs gratuitas indisponíveis: usando ${c.model} (pago).`);
+                const r = await chamarModelo(c, systemPrompt, userContent);
+                if (r.texto !== undefined) return r.texto;
+
+                falhas.push(`${c.nome}/${c.model}: ${r.erro}`);
+                if (r.indisponivel) llmIndisponiveis.add(`${c.nome}/${c.model}`);
+                console.warn(`  IA ${c.nome}/${c.model} falhou (${r.erro.slice(0, 120)})${r.indisponivel ? ' — fora pelo resto do ciclo' : ''}`);
+            }
+        }
+    }
+    throw new Error(`Nenhuma IA respondeu. ${falhas.slice(-3).join(' | ')}`);
 }
 
 // ------------------------------------------------------------------
-// Passo 3 — Classificar itens novos em lote via Claude Haiku
+// Passo 3 — Classificar itens novos em lote via IA
 // ------------------------------------------------------------------
 async function classifyBatch(items, category, condition = 'usado') {
     const listForPrompt = items
@@ -486,7 +593,7 @@ Devolva UM objeto para CADA título da lista, na mesma ordem, sem pular nenhum. 
 
 Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem markdown, sem crases.`;
 
-    const rawText = await callHaiku(systemPrompt, listForPrompt);
+    const rawText = await callLLM(systemPrompt, listForPrompt);
 
     const cleanText = rawText.replace(/```json|```/g, '').trim();
 
@@ -494,7 +601,7 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
     try {
         classifications = JSON.parse(cleanText);
     } catch (err) {
-        throw new Error(`Falha ao parsear resposta do Claude: ${err.message}\nResposta bruta: ${rawText}`);
+        throw new Error(`Falha ao parsear resposta da IA: ${err.message}\nResposta bruta: ${rawText}`);
     }
 
     // Casa pelo título ecoado (não só pelo index): já houve execução em que a IA
@@ -548,7 +655,7 @@ Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, sem
             category_match: categoryMatch,
             variant,
             condition: categoryMatch === true ? condition : null,
-            // Em categoria que mantém defeituosos (iPhone) o julgamento do Haiku
+            // Em categoria que mantém defeituosos (iPhone) o julgamento da IA
             // segue junto da classificação (e vai pro cache).
             defeito_ia: categoryMatch === true && defeitoIa,
         };
@@ -733,7 +840,7 @@ async function processValidItems(validItems, category, mediaMap) {
         }
 
         // Defeito: palavras do título (recalculado a cada raspagem) OU julgamento
-        // do Haiku (vem do cache). Anúncio com defeito fica no banco, com aviso no
+        // da IA (vem do cache). Anúncio com defeito fica no banco, com aviso no
         // front, mas não entra em historico_precos (não puxa a média de mercado).
         const defeito = item.defeito_titulo === true || item.defeito_ia === true;
         const historico = planHistory({ isNew, priceChanged, existingDefeito: existing && existing.defeito, defeito });
@@ -1112,9 +1219,9 @@ async function dropDefectiveFromDatabase(urls, chunkSize = 40) {
 
 // ------------------------------------------------------------------
 // Verificação da descrição — anúncios do feed ainda não verificados: abre o
-// anúncio no OLX, lê a descrição e o Haiku diz se há defeito ou algo que não
+// anúncio no OLX, lê a descrição e a IA diz se há defeito ou algo que não
 // condiz com o produto. Reprovado sai do banco (e leva o histórico de preço);
-// aprovado ganha verified_at. O que não deu pra verificar (OLX bloqueou, Haiku
+// aprovado ganha verified_at. O que não deu pra verificar (OLX bloqueou, IA
 // falhou) segue pendente pro próximo ciclo.
 // ------------------------------------------------------------------
 
@@ -1188,7 +1295,7 @@ async function cacheVeredito(coluna, urls) {
 // leitura: { linksOlx, headless } repassado a fetchDescriptionsViaBrowser.
 async function verifyFeedDescriptions(category, leitura = {}) {
     // Anúncio já marcado com defeito pelo título (iPhone) fica de fora: já aparece
-    // com aviso no card e não precisa gastar leitura nem Haiku.
+    // com aviso no card e não precisa gastar leitura nem IA.
     const { data: pendentes, error } = await supabase
         .from('anuncios_ativos')
         .select('url, title, profit_pct, opportunity_level')
@@ -1222,7 +1329,7 @@ async function verifyFeedDescriptions(category, leitura = {}) {
     for (let i = 0; i < comDescricao.length; i += DESCRIPTION_BATCH_SIZE) {
         const lote = comDescricao.slice(i, i + DESCRIPTION_BATCH_SIZE);
         try {
-            const rawText = await callHaiku(VERIFICACAO_SYSTEM_PROMPT, buildVerificationMessage(lote));
+            const rawText = await callLLM(VERIFICACAO_SYSTEM_PROMPT, buildVerificationMessage(lote));
             const veredictos = parseVerdicts(rawText, lote);
             for (const ad of lote) {
                 const v = veredictos.get(ad.url);
@@ -1306,7 +1413,7 @@ async function verifyFeedDescriptions(category, leitura = {}) {
 // ------------------------------------------------------------------
 // Execução principal
 // ------------------------------------------------------------------
-// Processa UM produto já raspado: cache → Haiku → regras de variant → médias →
+// Processa UM produto já raspado: cache → IA → regras de variant → médias →
 // anuncios_ativos/historico_precos. NÃO trata strikes: isso é feito no fim do
 // ciclo, por categoria (ver run()).
 async function processProduct(category, rawItemsRaw, condition, defeitoUrls = [], leituraDescricao = {}) {
@@ -1354,7 +1461,7 @@ async function processProduct(category, rawItemsRaw, condition, defeitoUrls = []
 
     let newlyClassified = [];
     if (toClassify.length > 0) {
-        console.log('3. Classificando itens novos via Claude Haiku...');
+        console.log('3. Classificando itens novos via IA...');
         newlyClassified = await classifyAllNew(toClassify, category, condition);
         await dropDefectiveFromDatabase(newlyClassified.filter((i) => i.descartado_defeito).map((i) => i.url));
 
@@ -1436,7 +1543,7 @@ async function rodarProduto(produto, { headless, dryRun, tracker }) {
 //   node worker.js ps5 xbox        -> só esses; strike só nas categorias 100% raspadas (aqui, nenhuma)
 //   node worker.js --paginas 1     -> teste rápido (última página); raspagem parcial nunca aplica strikes
 //   node worker.js --primeiras 5   -> só as 5 primeiras páginas (anúncios novos); também sem strikes
-//   node worker.js --dry-run       -> só raspa e valida; não usa Haiku nem grava no banco
+//   node worker.js --dry-run       -> só raspa e valida; não usa IA nem grava no banco
 async function run() {
     const opts = parseArgs(process.argv.slice(2));
     const headless = opts.headless || process.env.SCRAPER_HEADLESS === 'true';
@@ -1445,6 +1552,14 @@ async function run() {
     const tracker = createStrikeTracker(PRODUTOS, categoriaDe);
     const resumo = [];
 
+    if (!opts.dryRun) {
+        const cadeia = LLM_CADEIA.map((nome) => {
+            const p = LLM_PROVIDERS[nome];
+            const status = process.env[p.apiKeyEnv] ? `${p.modelos.length} modelo(s)` : `sem ${p.apiKeyEnv}, pulado`;
+            return `${nome}${p.pago ? ' [pago]' : ''} (${status})`;
+        });
+        console.log(`IA: ${cadeia.join(' → ')}`);
+    }
     console.log(
         `Ciclo com ${selecionados.length} produto(s): ${selecionados.map((p) => p.busca).join(', ')}` +
         `${opts.dryRun ? ' [DRY-RUN]' : ''}` +

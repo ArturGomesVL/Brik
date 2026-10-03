@@ -37,7 +37,7 @@ const CATALOGO = {
 
 const CATALOGO_KEYS = new Set(Object.values(CATALOGO).flat());
 
-// Texto do catálogo + regras pro prompt do Haiku (gerado daqui pra não dessincronizar).
+// Texto do catálogo + regras pro prompt da IA (gerado daqui pra não dessincronizar).
 function consoleCatalogPrompt() {
     const linhas = Object.entries(CATALOGO).map(([familia, keys]) => `${familia}: ${keys.join(', ')}`);
     return `${linhas.join('\n')}
