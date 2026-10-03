@@ -50,7 +50,9 @@ function GraficoLucro({ className = '' }) {
   )
 }
 
-function ProductCard({ item }) {
+// `vendido` (nos Salvos, quando o anúncio sumiu da OLX): a foto fica borrada,
+// com "Vendido" em vermelho por cima, e o selo de desconto some.
+function ProductCard({ item, vendido = false }) {
   // A estrela grava em public.salvos (ver useSalvosStore).
   const saved = useSalvosStore((state) => state.itens.some((s) => s.anuncio_url === item.url))
   const alternarSalvo = useSalvosStore((state) => state.alternar)
@@ -94,17 +96,26 @@ function ProductCard({ item }) {
               loading="lazy"
               referrerPolicy="no-referrer"
               onError={() => setImageFailed(true)}
-              className="card-oferta-foto h-full w-full object-cover"
+              // O scale esconde a borda clara que o blur deixa nas beiradas.
+              className={`card-oferta-foto h-full w-full object-cover ${vendido ? 'scale-110 blur-md' : ''}`}
             />
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-brik/40">
+            <div
+              className={`flex h-full w-full flex-col items-center justify-center gap-1 text-brik/40 ${vendido ? 'blur-[3px]' : ''}`}
+            >
               <FallbackIcon className="h-10 w-10" />
               <span className="text-[10px] font-medium">Sem foto</span>
             </div>
           )}
 
+          {vendido && (
+            <span className="absolute inset-0 flex items-center justify-center text-2xl font-extrabold uppercase tracking-wider text-red-600 [text-shadow:0_0_6px_rgba(255,255,255,0.9),0_0_2px_rgba(255,255,255,0.9)] lg:text-3xl">
+              Vendido
+            </span>
+          )}
+
           {/* Etiqueta de vidro sobre a foto (.glass-selo, no index.css). */}
-          {abaixoPct !== null && (
+          {abaixoPct !== null && !vendido && (
             <span className="glass-selo absolute left-2.5 top-2.5 rounded-full px-2.5 py-1 text-[10px] font-bold text-white lg:left-3 lg:top-3 lg:text-xs">
               {abaixoPct}% abaixo<span className="max-lg:hidden"> da média</span>
             </span>

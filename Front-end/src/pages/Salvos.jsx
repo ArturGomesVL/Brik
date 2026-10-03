@@ -3,14 +3,17 @@ import BrandHeader from '../components/BrandHeader.jsx'
 import { PrecisaLogin } from '../components/PrecisaLogin.jsx'
 import ProductCard, { ProductCardSkeleton } from '../components/ProductCard.jsx'
 import { StarIcon } from '../components/icons.jsx'
+import { supabase } from '../lib/supabase.js'
 import { useUsuarioId } from '../stores/useAuthStore.js'
 import { useOpportunitiesStore } from '../stores/useOpportunitiesStore.js'
 import { useSalvosStore } from '../stores/useSalvosStore.js'
 
 // "Salvos": os briques que o usuário marcou com a estrela no feed
 // (public.salvos). Enquanto o anúncio segue no feed, o card mostra os dados de
-// agora (preço, selo, média); se ele saiu, mostra o retrato de quando foi salvo,
-// com um aviso.
+// agora (preço, selo, média); se ele saiu, mostra o retrato de quando foi salvo.
+// Saiu de dois jeitos: sumiu da OLX (o worker apaga de anuncios_ativos depois de
+// 3 raspagens completas sem ele), e aí o card aparece como vendido; ou segue
+// anunciado mas deixou de ser oportunidade, e aí vai só um aviso.
 function Salvos() {
   const userId = useUsuarioId()
   const salvos = useSalvosStore((state) => state.itens)
@@ -29,15 +32,44 @@ function Salvos() {
     // Só na abertura.
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Dos salvos fora do feed, os que ainda existem em anuncios_ativos (os demais
+  // foram vendidos). null enquanto não consultou.
+  const [aindaAtivos, setAindaAtivos] = useState(null)
+  const foraDoFeed = useMemo(() => {
+    const noFeed = new Set(feed.map((item) => item.url))
+    return salvos.map((s) => s.anuncio_url).filter((url) => !noFeed.has(url))
+  }, [salvos, feed])
+  const chaveFora = foraDoFeed.join(' ')
+
+  useEffect(() => {
+    if (!carregado || esperandoFeed || foraDoFeed.length === 0) return
+    let ativo = true
+    supabase
+      .from('anuncios_ativos')
+      .select('url')
+      .in('url', foraDoFeed)
+      .then(({ data, error }) => {
+        if (!ativo) return
+        if (error) console.error('Erro ao conferir os salvos fora do feed:', error.message)
+        // Sem resposta, nenhum vira "vendido": todos ficam só com o aviso.
+        setAindaAtivos(new Set(error ? foraDoFeed : data.map((linha) => linha.url)))
+      })
+    return () => {
+      ativo = false
+    }
+    // chaveFora resume foraDoFeed: só consulta de novo quando a lista muda.
+  }, [carregado, esperandoFeed, chaveFora]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const lista = useMemo(() => {
     const porUrl = new Map(feed.map((item) => [item.url, item]))
     return salvos.map(({ anuncio_url, anuncio }) => {
       const atual = porUrl.get(anuncio_url)
-      return { url: anuncio_url, item: atual ?? anuncio, saiu: !atual }
+      const vendido = !atual && aindaAtivos !== null && !aindaAtivos.has(anuncio_url)
+      return { url: anuncio_url, item: atual ?? anuncio, saiu: !atual && !vendido, vendido }
     })
-  }, [salvos, feed])
+  }, [salvos, feed, aindaAtivos])
 
-  const pronto = carregado && !esperandoFeed
+  const pronto = carregado && !esperandoFeed && (foraDoFeed.length === 0 || aindaAtivos !== null)
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-md bg-surface pb-28 shadow-xl lg:max-w-7xl lg:px-8 lg:pb-12 lg:shadow-none">
@@ -76,7 +108,7 @@ function Salvos() {
               {lista.length} {lista.length === 1 ? 'oferta salva' : 'ofertas salvas'}
             </p>
             <ul className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              {lista.map(({ url, item, saiu }) => (
+              {lista.map(({ url, item, saiu, vendido }) => (
                 <li key={url} className="flex flex-col gap-1.5">
                   {saiu && (
                     <p className="rounded-lg bg-surface-raise px-2.5 py-1.5 text-[11px] leading-snug text-mute">
@@ -84,7 +116,7 @@ function Salvos() {
                     </p>
                   )}
                   <div className={`flex-1 ${saiu ? 'opacity-75' : ''}`}>
-                    <ProductCard item={item} />
+                    <ProductCard item={item} vendido={vendido} />
                   </div>
                 </li>
               ))}
